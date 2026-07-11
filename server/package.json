@@ -1,0 +1,22 @@
+{
+  "name": "server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot src/index.ts",
+    "migrate": "bun src/db/migrate.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@ag-ui/core": "^0.0.39",
+    "@hermes/shared": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "better-auth": "^1.2.8",
+    "croner": "^9.0.0",
+    "drizzle-kit": "^0.31.1",
+    "drizzle-orm": "^0.44.2",
+    "zod": "^3.25.56"
+  }
+}

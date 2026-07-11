@@ -1,0 +1,41 @@
+import { jsonResponse, parseJson } from './helpers'
+
+export async function handleMemory(req: Request, path: string): Promise<Response | null> {
+  const { memoryRepo } = await import('../db/repositories/memory')
+  const parts = path.split('/').filter(Boolean)
+
+  if (req.method === 'GET' && parts.length === 2) {
+    const url = new URL(req.url)
+    const kind = url.searchParams.get('kind') as 'semantic' | 'episodic' | 'preference' | null
+    return jsonResponse(await memoryRepo.list(kind ? { kind } : undefined))
+  }
+
+  if (req.method === 'POST' && parts.length === 2) {
+    const body = await parseJson(req)
+    if (!body?.kind || !body?.content) {
+      return jsonResponse({ error: 'kind and content required' }, 400)
+    }
+    const entry = await memoryRepo.create({
+      kind: body.kind as 'semantic' | 'episodic' | 'preference',
+      content: String(body.content),
+      sourceSession: body.sourceSession ? String(body.sourceSession) : null,
+      importance: typeof body.importance === 'number' ? body.importance : 0.5,
+    })
+    return jsonResponse(entry, 201)
+  }
+
+  if (parts.length === 3) {
+    const id = parts[2]!
+    if (req.method === 'PATCH') {
+      const body = await parseJson(req)
+      const entry = await memoryRepo.update(id, body ?? {})
+      if (!entry) return jsonResponse({ error: 'Not found' }, 404)
+      return jsonResponse(entry)
+    }
+    if (req.method === 'DELETE') {
+      return jsonResponse({ deleted: await memoryRepo.delete(id) })
+    }
+  }
+
+  return null
+}

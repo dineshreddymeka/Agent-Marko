@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["bun"],
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@server/*": ["./src/*"],
+      "@shared/*": ["../packages/shared/src/*"]
+    }
+  },
+  "include": ["src/**/*", "test/**/*"]
+}
