@@ -1,34 +1,67 @@
-import { PanelLeftClose, PanelLeft } from 'lucide-react'
-import { useUiStore } from '@app/stores/ui'
+import { PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react'
+import { useNavigate } from '@tanstack/react-router'
 import { SessionsPanel } from '@app/components/panels/SessionsPanel'
-import { cn } from '@app/lib/utils'
+import { useUiStore } from '@app/stores/ui'
+import { useSessionsStore } from '@app/stores/sessions'
+import { generateId } from '@app/lib/utils'
 
 export function Sidebar() {
-  const open = useUiStore((s) => s.sidebarOpen)
-  const toggle = useUiStore((s) => s.toggleSidebar)
+  const sidebarOpen = useUiStore((s) => s.sidebarOpen)
+  const toggleSidebar = useUiStore((s) => s.toggleSidebar)
+  const addSession = useSessionsStore((s) => s.addSession)
+  const setActiveSessionId = useSessionsStore((s) => s.setActiveSessionId)
+  const navigate = useNavigate()
+
+  const newSession = () => {
+    const id = generateId()
+    addSession({
+      id,
+      title: 'New chat',
+      groupName: null,
+      profileId: null,
+      pinned: false,
+      archived: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+    setActiveSessionId(id)
+    void navigate({ to: '/session/$id', params: { id } })
+  }
 
   return (
     <aside
-      className={cn(
-        'flex shrink-0 flex-col border-r border-border bg-canvas-subtle transition-[width] duration-150 ease-out',
-        open ? 'w-[var(--sidebar-width)]' : 'w-0 overflow-hidden border-r-0',
-        'max-md:fixed max-md:inset-y-0 max-md:left-[var(--rail-width)] max-md:z-40 max-md:shadow-xl',
-      )}
+      aria-label="Sessions"
+      className={[
+        'flex shrink-0 flex-col border-r border-border bg-canvas-subtle transition-shell overflow-hidden',
+        'max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-xl max-md:pb-14',
+        sidebarOpen ? 'w-[280px] opacity-100' : 'w-0 opacity-0 max-md:pointer-events-none border-r-0',
+      ].join(' ')}
     >
-      <div className="flex h-10 items-center justify-between border-b border-border px-3">
-        <span className="text-xs font-medium uppercase tracking-wide text-fg-muted">
-          Sessions
-        </span>
-        <button
-          type="button"
-          onClick={toggle}
-          className="rounded p-1 text-fg-muted hover:bg-canvas-inset hover:text-fg"
-          title="Toggle sidebar (Ctrl+B)"
-        >
-          {open ? <PanelLeftClose size={16} /> : <PanelLeft size={16} />}
-        </button>
+      <div className="flex h-12 items-center justify-between border-b border-border px-3">
+        <span className="text-sm font-medium text-fg">Sessions</span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            title="New session"
+            aria-label="New session"
+            onClick={newSession}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted hover:bg-canvas hover:text-fg"
+          >
+            <Plus size={16} />
+          </button>
+          <button
+            type="button"
+            title="Toggle sidebar (Ctrl+B)"
+            aria-label="Toggle sidebar"
+            onClick={toggleSidebar}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted hover:bg-canvas hover:text-fg"
+          >
+            {sidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+          </button>
+        </div>
       </div>
-      <div className="flex-1 overflow-y-auto">
+
+      <div className="min-h-0 flex-1 overflow-auto">
         <SessionsPanel compact />
       </div>
     </aside>

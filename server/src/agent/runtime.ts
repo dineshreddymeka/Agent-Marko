@@ -11,6 +11,7 @@ import { sessionsRepo } from '../db/repositories/sessions'
 import { queueEmbedding } from '../vector/indexer'
 import { ToolError } from '../errors'
 import { logger } from '../log'
+import { config } from '../config'
 
 import './tools/shell'
 import './tools/files'
@@ -23,6 +24,30 @@ import './tools/delegate_to_agent'
 import './tools/code'
 
 const MAX_TOOL_ITERATIONS = 20
+const THINKING_FLUSH_MS = 100
+
+async function flushThinkingBuffer(opts: {
+  emit: EventEmitter
+  thinkingMessageId: string
+  thinkingStarted: boolean
+  buffer: string
+}): Promise<{ thinkingStarted: boolean; buffer: string }> {
+  if (!opts.buffer) return { thinkingStarted: opts.thinkingStarted, buffer: opts.buffer }
+  if (!opts.thinkingStarted) {
+    await opts.emit({
+      type: EventType.THINKING_TEXT_MESSAGE_START,
+      messageId: opts.thinkingMessageId,
+      role: 'assistant',
+    })
+    opts.thinkingStarted = true
+  }
+  await opts.emit({
+    type: EventType.THINKING_TEXT_MESSAGE_CONTENT,
+    messageId: opts.thinkingMessageId,
+    delta: opts.buffer,
+  })
+  return { thinkingStarted: opts.thinkingStarted, buffer: '' }
+}
 
 function toChatMessages(input: RunAgentInput, systemPrompt: string): ChatMessage[] {
   const msgs: ChatMessage[] = [{ role: 'system', content: systemPrompt }]
@@ -58,16 +83,21 @@ export async function runNativeAgent(
   const chatMessages = toChatMessages(input, ctx.systemPrompt)
   const tools = toLlmTools()
   let iterations = 0
-  let totalUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
+  let runUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
 
   while (iterations++ < MAX_TOOL_ITERATIONS) {
     if (signal.aborted) return
 
     const messageId = randomUUID()
+    const thinkingMessageId = randomUUID()
     let content = ''
     let thinking = ''
+    let thinkingStarted = false
+    let thinkingPending = ''
+    let lastThinkingFlush = 0
     const toolCalls = new Map<number, { id: string; name: string; arguments: string }>()
     let finishReason: string | null = null
+    let iterationUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
 
     await emit({ type: EventType.TEXT_MESSAGE_START, messageId, role: 'assistant' })
 
@@ -79,7 +109,7 @@ export async function runNativeAgent(
       signal,
     })) {
       if (delta.usage) {
-        totalUsage = delta.usage
+        iterationUsage = delta.usage
       }
       if (delta.content) {
         content += delta.content
@@ -87,6 +117,19 @@ export async function runNativeAgent(
       }
       if (delta.reasoning) {
         thinking += delta.reasoning
+        thinkingPending += delta.reasoning
+        const now = Date.now()
+        if (now - lastThinkingFlush >= THINKING_FLUSH_MS) {
+          const flushed = await flushThinkingBuffer({
+            emit,
+            thinkingMessageId,
+            thinkingStarted,
+            buffer: thinkingPending,
+          })
+          thinkingStarted = flushed.thinkingStarted
+          thinkingPending = flushed.buffer
+          lastThinkingFlush = now
+        }
       }
       if (delta.toolCalls) {
         for (const tc of delta.toolCalls) {
@@ -104,18 +147,41 @@ export async function runNativeAgent(
       if (delta.finishReason) finishReason = delta.finishReason
     }
 
+    if (thinkingPending) {
+      const flushed = await flushThinkingBuffer({
+        emit,
+        thinkingMessageId,
+        thinkingStarted,
+        buffer: thinkingPending,
+      })
+      thinkingStarted = flushed.thinkingStarted
+      thinkingPending = flushed.buffer
+    }
+    if (thinkingStarted) {
+      await emit({ type: EventType.THINKING_TEXT_MESSAGE_END, messageId: thinkingMessageId })
+    }
+
     await emit({ type: EventType.TEXT_MESSAGE_END, messageId })
 
-    void messagesRepo.create({
-      sessionId: input.threadId,
-      runId: input.runId,
-      role: 'assistant',
-      content,
-      thinking: thinking || null,
-      tokens: totalUsage.completionTokens,
-    }).then((msg) => queueEmbedding('message', msg.id, content))
+    runUsage = {
+      promptTokens: runUsage.promptTokens + iterationUsage.promptTokens,
+      completionTokens: runUsage.completionTokens + iterationUsage.completionTokens,
+      totalTokens: runUsage.totalTokens + iterationUsage.totalTokens,
+    }
 
-    void sessionsRepo.touch(input.threadId)
+    void messagesRepo
+      .create({
+        sessionId: input.threadId,
+        runId: input.runId,
+        role: 'assistant',
+        content,
+        thinking: thinking || null,
+        tokens: iterationUsage.completionTokens,
+      })
+      .then((msg) => queueEmbedding('message', msg.id, content))
+      .catch(() => undefined)
+
+    void sessionsRepo.touch(input.threadId).catch(() => undefined)
 
     const calls = [...toolCalls.values()]
     if (finishReason !== 'tool_calls' && calls.length === 0) {
@@ -196,15 +262,17 @@ export async function runNativeAgent(
         role: 'tool',
       })
 
-      void messagesRepo.create({
-        sessionId: input.threadId,
-        runId: input.runId,
-        role: 'tool',
-        content: resultStr,
-        toolName: call.name,
-        toolArgs: parsedArgs,
-        toolResult: result,
-      })
+      void messagesRepo
+        .create({
+          sessionId: input.threadId,
+          runId: input.runId,
+          role: 'tool',
+          content: resultStr,
+          toolName: call.name,
+          toolArgs: parsedArgs,
+          toolResult: result,
+        })
+        .catch(() => undefined)
 
       chatMessages.push({
         role: 'tool',
@@ -218,8 +286,10 @@ export async function runNativeAgent(
     type: EventType.CUSTOM,
     name: HermesCustomEvents.CONTEXT,
     value: {
-      ...totalUsage,
-      contextLimit: 128_000,
+      ...runUsage,
+      tokensUsed: runUsage.totalTokens,
+      tokensMax: config.CONTEXT_TOKEN_LIMIT,
+      contextLimit: config.CONTEXT_TOKEN_LIMIT,
     },
   })
 }

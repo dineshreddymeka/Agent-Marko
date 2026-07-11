@@ -26,3 +26,5 @@ self.onmessage = async (e: MessageEvent<{ id: string; code: string; lang: string
     })
   }
 }
+
+export default self

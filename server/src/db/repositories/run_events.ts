@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm'
+import { asc, desc, eq, sql } from 'drizzle-orm'
 import { getDb } from '../client'
 import { runEvents } from '../schema'
 
@@ -50,5 +50,28 @@ export const runEventsRepo = {
       .where(eq(runEvents.runId, runId))
       .orderBy(asc(runEvents.seq))
     return rows.map(toDto)
+  },
+
+  async listRecentRuns(limit = 20): Promise<
+    { runId: string; sessionId: string | null; eventCount: number; lastAt: string }[]
+  > {
+    const db = getDb()
+    const rows = await db
+      .select({
+        runId: runEvents.runId,
+        sessionId: runEvents.sessionId,
+        eventCount: sql<number>`count(*)::int`,
+        lastAt: sql<Date>`max(${runEvents.createdAt})`,
+      })
+      .from(runEvents)
+      .groupBy(runEvents.runId, runEvents.sessionId)
+      .orderBy(desc(sql`max(${runEvents.createdAt})`))
+      .limit(limit)
+    return rows.map((r) => ({
+      runId: r.runId,
+      sessionId: r.sessionId,
+      eventCount: r.eventCount,
+      lastAt: r.lastAt.toISOString(),
+    }))
   },
 }

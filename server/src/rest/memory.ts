@@ -1,4 +1,5 @@
 import { jsonResponse, parseJson } from './helpers'
+import { requireDatabaseOrResponse, withDatabase } from './db-guard'
 
 export async function handleMemory(req: Request, path: string): Promise<Response | null> {
   const { memoryRepo } = await import('../db/repositories/memory')
@@ -7,10 +8,16 @@ export async function handleMemory(req: Request, path: string): Promise<Response
   if (req.method === 'GET' && parts.length === 2) {
     const url = new URL(req.url)
     const kind = url.searchParams.get('kind') as 'semantic' | 'episodic' | 'preference' | null
-    return jsonResponse(await memoryRepo.list(kind ? { kind } : undefined))
+    const entries = await withDatabase(
+      () => memoryRepo.list(kind ? { kind } : undefined),
+      [],
+    )
+    return jsonResponse(entries)
   }
 
   if (req.method === 'POST' && parts.length === 2) {
+    const unavailable = await requireDatabaseOrResponse()
+    if (unavailable) return unavailable
     const body = await parseJson(req)
     if (!body?.kind || !body?.content) {
       return jsonResponse({ error: 'kind and content required' }, 400)

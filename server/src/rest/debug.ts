@@ -25,11 +25,29 @@ export async function handleDebug(req: Request, path: string): Promise<Response 
     })
   }
 
+  if (req.method === 'GET' && parts.length === 3 && parts[2] === 'runs') {
+    const url = new URL(req.url)
+    const limit = Number(url.searchParams.get('limit') ?? 20)
+    const { isDatabaseAvailable } = await import('./db-guard')
+    if (!(await isDatabaseAvailable())) {
+      const { listBufferedRuns } = await import('../agui/run-event-buffer')
+      return jsonResponse({ runs: listBufferedRuns(Math.min(limit, 100)), source: 'memory' })
+    }
+    const { runEventsRepo } = await import('../db/repositories/run_events')
+    const runs = await runEventsRepo.listRecentRuns(Math.min(limit, 100))
+    return jsonResponse({ runs, source: 'postgres' })
+  }
+
   if (req.method === 'GET' && parts.length === 5 && parts[2] === 'runs' && parts[4] === 'events') {
     const runId = parts[3]!
+    const { isDatabaseAvailable } = await import('./db-guard')
+    if (!(await isDatabaseAvailable())) {
+      const { getBufferedRunEvents } = await import('../agui/run-event-buffer')
+      return jsonResponse({ runId, events: getBufferedRunEvents(runId), source: 'memory' })
+    }
     const { runEventsRepo } = await import('../db/repositories/run_events')
     const events = await runEventsRepo.listByRun(runId)
-    return jsonResponse({ runId, events })
+    return jsonResponse({ runId, events, source: 'postgres' })
   }
 
   return null

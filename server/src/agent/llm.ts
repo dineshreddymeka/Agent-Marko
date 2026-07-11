@@ -1,6 +1,7 @@
 import { config } from '../config'
 import { LlmError } from '../errors'
 import { logger } from '../log'
+import { isMockLlmEnabled, streamMockCompletion } from './mock-llm'
 
 export type ChatMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool'
@@ -38,6 +39,11 @@ export async function* streamChatCompletion(opts: {
   tools?: LlmTool[]
   signal?: AbortSignal
 }): AsyncGenerator<StreamDelta> {
+  if (isMockLlmEnabled()) {
+    yield* streamMockCompletion(undefined, { messages: opts.messages })
+    return
+  }
+
   const url = `${config.LLM_BASE_URL.replace(/\/$/, '')}/chat/completions`
   const res = await fetch(url, {
     method: 'POST',

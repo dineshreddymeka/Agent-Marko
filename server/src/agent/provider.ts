@@ -7,6 +7,7 @@ import type { EventEmitter } from '../agui/events'
 import { nativeProvider } from './providers/native'
 import { aguiRemoteProvider } from './providers/agui-remote'
 import { hermesPythonProvider } from './providers/hermes-python'
+import { isMockLlmEnabled } from './mock-llm'
 
 export interface AgentProvider {
   readonly id: Profile['provider']
@@ -32,6 +33,10 @@ export function listProviders(): Profile['provider'][] {
 }
 
 export async function resolveProvider(input: RunAgentInput): Promise<AgentProvider> {
+  if (isMockLlmEnabled()) {
+    return nativeProvider
+  }
+
   const session = await sessionsRepo.getById(input.threadId)
   let profile: Profile | null = null
   if (session?.profileId) {

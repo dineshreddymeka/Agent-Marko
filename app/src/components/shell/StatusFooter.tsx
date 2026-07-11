@@ -1,62 +1,62 @@
-import { useSettingsStore } from '@app/stores/settings'
 import { useChatStore } from '@app/stores/chat'
-import { cn } from '@app/lib/utils'
 
-function ContextRing({ used, limit }: { used: number; limit: number }) {
-  const pct = Math.min(100, Math.round((used / limit) * 100))
-  const r = 8
-  const circumference = 2 * Math.PI * r
-  const offset = circumference - (pct / 100) * circumference
-  const color =
-    pct > 90 ? 'var(--color-danger)' : pct > 70 ? 'var(--color-attention)' : 'var(--color-accent)'
+interface ContextRingProps {
+  used?: number
+  max?: number
+}
+
+export function ContextRing({ used = 0, max = 128_000 }: ContextRingProps) {
+  const pct = max > 0 ? Math.min(used / max, 1) : 0
+  const radius = 7
+  const circumference = 2 * Math.PI * radius
+  const offset = circumference * (1 - pct)
 
   return (
-    <svg width="20" height="20" viewBox="0 0 20 20" className="shrink-0" aria-hidden>
-      <circle cx="10" cy="10" r={r} fill="none" stroke="var(--color-border)" strokeWidth="2" />
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 18 18"
+      aria-label={`Context usage ${Math.round(pct * 100)}%`}
+      role="img"
+    >
       <circle
-        cx="10"
-        cy="10"
-        r={r}
+        cx="9"
+        cy="9"
+        r={radius}
         fill="none"
-        stroke={color}
+        stroke="var(--color-border)"
         strokeWidth="2"
+      />
+      <circle
+        cx="9"
+        cy="9"
+        r={radius}
+        fill="none"
+        stroke="var(--color-accent)"
+        strokeWidth="2"
+        strokeLinecap="round"
         strokeDasharray={circumference}
         strokeDashoffset={offset}
-        strokeLinecap="round"
-        transform="rotate(-90 10 10)"
-        className={cn(pct > 90 && 'animate-pulse-ring')}
+        transform="rotate(-90 9 9)"
       />
     </svg>
   )
 }
 
 export function StatusFooter() {
-  const model = useSettingsStore((s) => s.model)
   const contextUsage = useChatStore((s) => s.contextUsage)
-  const runStatus = useChatStore((s) => s.runStatus)
+  const model = 'hermes-3-llama-3.1-8b'
+  const tokensUsed = contextUsage?.used ?? 0
+  const tokensMax = contextUsage?.limit ?? 128_000
 
   return (
-    <footer className="flex h-[var(--footer-height)] shrink-0 items-center justify-between border-t border-border bg-canvas-subtle px-4 text-xs text-fg-muted">
+    <footer className="flex h-8 shrink-0 items-center justify-between border-t border-border bg-canvas-subtle px-3 text-xs text-fg-muted">
+      <span className="font-mono">{model}</span>
       <div className="flex items-center gap-2">
-        <span className="font-medium text-fg">{model}</span>
-        {runStatus === 'running' && (
-          <span className="rounded bg-accent-muted px-1.5 py-0.5 text-accent">Running</span>
-        )}
-      </div>
-      <div className="flex items-center gap-2" title="Context usage">
-        {contextUsage ? (
-          <>
-            <ContextRing used={contextUsage.used} limit={contextUsage.limit} />
-            <span>
-              {contextUsage.used.toLocaleString()} / {contextUsage.limit.toLocaleString()} tokens
-            </span>
-          </>
-        ) : (
-          <>
-            <ContextRing used={0} limit={128000} />
-            <span>— / 128k tokens</span>
-          </>
-        )}
+        <ContextRing used={tokensUsed} max={tokensMax} />
+        <span>
+          {tokensUsed.toLocaleString()} / {tokensMax.toLocaleString()} tokens
+        </span>
       </div>
     </footer>
   )

@@ -5,14 +5,13 @@ import { config } from './config'
 import { startCronScheduler } from './cron/scheduler'
 import { pingDatabase } from './db/client'
 import { runMigrations } from './db/migrate'
+import { getHealthResponse } from './health'
 import { logger } from './log'
 import { connectAll } from './mcp/manager'
 import { syncSkillsFromDisk } from './skills/loader'
 import { refreshMcpToolBridge } from './mcp/tool-bridge'
 import { handleRest } from './rest/router'
 import { loadApprovalSettings } from './agent/approval'
-
-const VERSION = '0.1.0'
 
 function corsHeaders(req: Request): HeadersInit {
   const origin = req.headers.get('Origin') ?? '*'
@@ -45,7 +44,7 @@ async function boot(): Promise<void> {
   await startCronScheduler()
   await connectAll()
   await refreshMcpToolBridge()
-  logger.info('Boot complete', { version: VERSION })
+  logger.info('Boot complete')
 }
 
 await boot()
@@ -79,10 +78,7 @@ const server = Bun.serve({
       }
 
       if (url.pathname === '/api/health' && req.method === 'GET') {
-        return withCors(
-          req,
-          Response.json({ ok: true, version: VERSION, db: await pingDatabase() }),
-        )
+        return withCors(req, Response.json(await getHealthResponse()))
       }
 
       const denied = await guardRequest(req)

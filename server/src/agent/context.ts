@@ -1,5 +1,6 @@
 import type { RunAgentInput } from '@ag-ui/core'
 import type { Profile } from '@hermes/shared'
+import { isMockLlmEnabled } from './mock-llm'
 import { profilesRepo } from '../db/repositories/profiles'
 import { sessionsRepo } from '../db/repositories/sessions'
 import { memoryRepo } from '../db/repositories/memory'
@@ -14,7 +15,7 @@ export type BuiltContext = {
   skillSnippets: string[]
 }
 
-const TOKEN_BUDGET = 8000
+const TOKEN_BUDGET = config.CONTEXT_INJECTION_BUDGET
 
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4)
@@ -32,7 +33,27 @@ function trimToBudget(items: string[], budget: number): string[] {
   return result
 }
 
+const MOCK_PROFILE: Profile = {
+  id: '00000000-0000-4000-8000-000000000099',
+  name: 'Mock',
+  systemPrompt: 'You are a test agent.',
+  model: 'mock',
+  temperature: 0,
+  provider: 'native',
+  providerConfig: null,
+  settings: null,
+}
+
 export async function buildAgentContext(input: RunAgentInput): Promise<BuiltContext> {
+  if (isMockLlmEnabled()) {
+    return {
+      systemPrompt: MOCK_PROFILE.systemPrompt,
+      profile: MOCK_PROFILE,
+      memorySnippets: [],
+      skillSnippets: [],
+    }
+  }
+
   const session = await sessionsRepo.getById(input.threadId)
   let profile: Profile | null = null
   if (session?.profileId) {

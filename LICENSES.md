@@ -33,7 +33,7 @@ Hermes UI uses **permissive licenses only** (MIT, Apache-2.0, PostgreSQL, ISC, B
 
 | Component | License |
 |-----------|---------|
-| PostgreSQL 18 | PostgreSQL License |
+| PostgreSQL 17 | PostgreSQL License |
 | pgvector | PostgreSQL License |
 
 Audit command: `bun pm ls` — re-run before each release and update this file if dependencies change.

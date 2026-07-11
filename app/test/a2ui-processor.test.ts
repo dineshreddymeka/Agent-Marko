@@ -1,0 +1,46 @@
+import { describe, expect, test, beforeEach } from 'bun:test'
+import {
+  getSurface,
+  getSurfaces,
+  processA2UIMessage,
+} from '../src/lib/a2ui/processor'
+
+describe('A2UI processor', () => {
+  beforeEach(() => {
+    getSurfaces().clear()
+  })
+
+  test('processes cron picker surface', () => {
+    processA2UIMessage(
+      {
+        surfaceId: 'test-cron',
+        component: {
+          id: 'c1',
+          type: 'hermes:CronSchedulePicker',
+          props: { name: 'Daily', schedule: '0 9 * * *' },
+        },
+        complete: true,
+      },
+      'session-1',
+    )
+    const surface = getSurface('test-cron')
+    expect(surface?.complete).toBe(true)
+    expect(surface?.components[0]?.type).toBe('hermes:CronSchedulePicker')
+  })
+
+  test('processes memory editor surface', () => {
+    processA2UIMessage(
+      {
+        surfaceId: 'test-mem',
+        component: {
+          id: 'm1',
+          type: 'hermes:MemoryEntryEditor',
+          props: { kind: 'semantic', content: 'Test memory' },
+        },
+        complete: true,
+      },
+      null,
+    )
+    expect(getSurface('test-mem')?.components[0]?.type).toBe('hermes:MemoryEntryEditor')
+  })
+})

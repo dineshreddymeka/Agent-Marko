@@ -1,14 +1,18 @@
 import { jsonResponse, parseJson } from './helpers'
+import { requireDatabaseOrResponse, withDatabase } from './db-guard'
 
 export async function handleProfiles(req: Request, path: string): Promise<Response | null> {
   const { profilesRepo } = await import('../db/repositories/profiles')
   const parts = path.split('/').filter(Boolean)
 
   if (req.method === 'GET' && parts.length === 2) {
-    return jsonResponse(await profilesRepo.list())
+    const profiles = await withDatabase(() => profilesRepo.list(), [])
+    return jsonResponse(profiles)
   }
 
   if (req.method === 'POST' && parts.length === 2) {
+    const unavailable = await requireDatabaseOrResponse()
+    if (unavailable) return unavailable
     const body = await parseJson(req)
     if (!body?.name) return jsonResponse({ error: 'name required' }, 400)
     const profile = await profilesRepo.create({

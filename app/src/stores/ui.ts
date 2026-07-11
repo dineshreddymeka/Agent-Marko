@@ -1,4 +1,7 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+
+export type Theme = 'dark' | 'dim' | 'light'
 
 export type PanelName =
   | 'sessions'
@@ -17,40 +20,81 @@ export interface Toast {
 }
 
 interface UiState {
+  theme: Theme
   sidebarOpen: boolean
   rightPanelOpen: boolean
   activePanel: PanelName | null
   commandPaletteOpen: boolean
   toasts: Toast[]
+  setTheme: (theme: Theme) => void
+  cycleTheme: () => void
   toggleSidebar: () => void
-  setSidebarOpen: (open: boolean) => void
   toggleRightPanel: () => void
+  setSidebarOpen: (open: boolean) => void
   setRightPanelOpen: (open: boolean) => void
   setActivePanel: (panel: PanelName | null) => void
   setCommandPaletteOpen: (open: boolean) => void
-  addToast: (toast: Omit<Toast, 'id'>) => void
+  addToast: (toast: Omit<Toast, 'id'> & { id?: string }) => void
   removeToast: (id: string) => void
 }
 
-export const useUiStore = create<UiState>()((set) => ({
-  sidebarOpen: true,
-  rightPanelOpen: false,
-  activePanel: 'sessions',
-  commandPaletteOpen: false,
-  toasts: [],
-  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
-  setSidebarOpen: (open) => set({ sidebarOpen: open }),
-  toggleRightPanel: () => set((s) => ({ rightPanelOpen: !s.rightPanelOpen })),
-  setRightPanelOpen: (open) => set({ rightPanelOpen: open }),
-  setActivePanel: (panel) => set({ activePanel: panel }),
-  setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
-  addToast: (toast) =>
-    set((s) => ({
-      toasts: [...s.toasts, { ...toast, id: crypto.randomUUID() }],
-    })),
-  removeToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
-}))
+const THEMES: Theme[] = ['dark', 'dim', 'light']
 
-export function applyTheme(theme: 'dark' | 'dim' | 'light') {
-  document.documentElement.setAttribute('data-theme', theme)
+function applyTheme(theme: Theme) {
+  if (typeof document !== 'undefined') {
+    document.documentElement.dataset.theme = theme
+  }
 }
+
+export const useUiStore = create<UiState>()(
+  persist(
+    (set, get) => ({
+      theme: 'dark',
+      sidebarOpen: true,
+      rightPanelOpen: false,
+      activePanel: null,
+      commandPaletteOpen: false,
+      toasts: [],
+      setTheme: (theme) => {
+        applyTheme(theme)
+        set({ theme })
+      },
+      cycleTheme: () => {
+        const current = get().theme
+        const next = THEMES[(THEMES.indexOf(current) + 1) % THEMES.length] ?? 'dark'
+        applyTheme(next)
+        set({ theme: next })
+      },
+      toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+      toggleRightPanel: () => set((s) => ({ rightPanelOpen: !s.rightPanelOpen })),
+      setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
+      setRightPanelOpen: (rightPanelOpen) => set({ rightPanelOpen }),
+      setActivePanel: (activePanel) => set({ activePanel }),
+      setCommandPaletteOpen: (commandPaletteOpen) => set({ commandPaletteOpen }),
+      addToast: (toast) =>
+        set((s) => ({
+          toasts: [
+            ...s.toasts,
+            {
+              id: toast.id ?? crypto.randomUUID(),
+              title: toast.title,
+              description: toast.description,
+              variant: toast.variant ?? 'default',
+            },
+          ],
+        })),
+      removeToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+    }),
+    {
+      name: 'hermes-ui',
+      partialize: (s) => ({ theme: s.theme }),
+      onRehydrateStorage: () => (state) => {
+        if (state?.theme) applyTheme(state.theme)
+      },
+    },
+  ),
+)
+
+applyTheme('dark')
+
+export { applyTheme }

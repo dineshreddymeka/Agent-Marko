@@ -3,6 +3,8 @@ import { resolveProvider } from '../agent/provider'
 import { runEventsRepo } from '../db/repositories/run_events'
 import { isHermesError } from '../errors'
 import { logger } from '../log'
+import { isDatabaseAvailable } from '../rest/db-guard'
+import { bufferRunEvent } from './run-event-buffer'
 import { encodeAguiComment, encodeAguiEvent } from './encoder'
 import { createEventRecorder, type EventEmitter } from './events'
 import {
@@ -18,6 +20,10 @@ let seqCounter = 0
 
 async function recordEvent(runId: string, sessionId: string | null, event: BaseEvent): Promise<void> {
   const seq = ++seqCounter
+  if (!(await isDatabaseAvailable())) {
+    bufferRunEvent({ runId, sessionId, seq, eventType: event.type, payload: event })
+    return
+  }
   try {
     await runEventsRepo.append({
       runId,

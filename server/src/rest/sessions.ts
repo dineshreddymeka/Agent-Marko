@@ -1,15 +1,18 @@
 import { jsonResponse, parseJson, readBody } from './helpers'
+import { requireDatabaseOrResponse, withDatabase } from './db-guard'
 
 export async function handleSessions(req: Request, path: string): Promise<Response | null> {
   const { sessionsRepo } = await import('../db/repositories/sessions')
   const parts = path.split('/').filter(Boolean)
 
   if (req.method === 'GET' && parts.length === 2) {
-    const sessions = await sessionsRepo.list()
+    const sessions = await withDatabase(() => sessionsRepo.list(), [])
     return jsonResponse(sessions)
   }
 
   if (req.method === 'POST' && parts.length === 2) {
+    const unavailable = await requireDatabaseOrResponse()
+    if (unavailable) return unavailable
     const body = await parseJson(req)
     const session = await sessionsRepo.create(body ?? {})
     return jsonResponse(session, 201)

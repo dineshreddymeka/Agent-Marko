@@ -4,21 +4,42 @@ Migrate the Hermes Agent WebUI concept from vanilla JS (7 modules, ~22k lines, n
 
 ## Task checklist
 
-- [ ] Phase 1a: Bun monorepo scaffold (app/ + server/ + packages/shared), Vite + React 19 + React Compiler + TS strict, Tailwind v4, ESLint/Prettier, bun test setup
-- [ ] Phase 1b: Primer-token dark design system, app shell (icon rail, sidebar, chat column, right panel), TanStack Router, theme switching
-- [ ] Phase 2: docker-compose Postgres 18 + pgvector 0.8.5 (data bind-mounted to separate HERMES_DATA_DIR outside the repo, PG18 volume path), full DDL migrations, Bun.sql client, repositories, db:backup script
-- [ ] Phase 3a: Bun.serve AG-UI server: POST /agui SSE endpoint, RunAgentInput handling, event encoder, run lifecycle, cancellation
-- [ ] Phase 3b: orchestration layer — AgentProvider interface, native Hermes runtime (LLM client, tools, approval gate), agui-remote provider for any AG-UI framework (LangGraph/CrewAI/Mastra/...), delegate_to_agent tool, per-profile provider selection
-- [ ] Phase 3c: embeddings pipeline + pgvector HNSW semantic search for memory, skills, chat history; recall injected into agent context
-- [ ] Phase 3d: MCP client (stdio + HTTP transports, tool bridge, mcp_servers config) and SKILL.md skills loader (folder/git sources, learning loop via skill_save)
-- [ ] Phase 3e: better-auth (email/password + OAuth, single-user bootstrap, API tokens, route guards) and compute layer (Bun Workers pool, sandboxed run_code agent tool)
-- [ ] Phase 4a: chat core — composer (slash commands, attachments), virtualized message list, streaming markdown/Shiki worker, tool cards, thinking blocks
-- [ ] Phase 4b: @ag-ui/client wiring — all event types, session recovery, approval flow (HITL), run cancel, error banners
-- [ ] Phase 4c: shared state panel (SNAPSHOT/DELTA JSON Patch), frontend tools registry, predictive updates, custom Hermes events (context ring, toasts)
-- [ ] Phase 5: @a2ui/react renderer — full catalog mapped to design system, custom Hermes widgets (skill card, memory editor, cron picker), action/actionResponse round-trips
-- [ ] Phase 6: panels — sessions CRUD/groups/search, workspace file tree + preview, skills manager, memory browser, cron manager, profiles, settings
-- [ ] Cross-cutting: structured logging with run/thread correlation IDs, run event recording + replay debug panel, debug endpoints, typed error taxonomy, ADRs, lint boundaries
-- [ ] Phase 7: command palette, keyboard shortcuts, mobile responsive, themes, error/empty/loading states, README + parity checklist
+**Last updated:** 2026-07-11 · Repo: [Agent-Marko](https://github.com/dineshreddymeka/Agent-Marko)
+
+| | Phase | Status |
+|---|--------|--------|
+| ✅ | 1 Scaffold + design system | **Done** — shell, themes, router, tests + build green |
+| ✅ | 2 Database | **Done** — `verify:phase2` (requires Docker locally) |
+| ✅ | 3 AG-UI server + agent | **Done** — mock LLM + `verify:phase3` |
+| ✅ | 4 Chat + AG-UI client | **Wired** — composer, streaming, approval, context ring |
+| ✅ | 5 A2UI | **Wired** — custom catalog + Hermes widgets in chat |
+| ✅ | 6 Panels | **Wired** — sidebar sessions + `/panel/$name` routes + REST |
+| ✅ | 7 Polish | **Done** — mobile nav, Playwright, Lighthouse **95** |
+| ✅ | Cross-cutting | **Done** — logging, debug API, replay UI in Settings |
+
+- [x] Phase 1a: Bun monorepo scaffold (app/ + server/ + packages/shared), Vite + React 19 + React Compiler + TS strict, Tailwind v4, ESLint/Prettier, bun test setup
+- [x] Phase 1b: Primer-token dark design system, app shell (icon rail, sidebar, chat column, right panel), TanStack Router, theme switching
+- [x] Phase 2: docker-compose Postgres 17 + pgvector 0.8.5, DDL migrations, Bun.sql client, repositories, db:backup script
+- [x] Phase 2 verify: `bun run verify:phase2` (Docker Desktop + Postgres on :5433)
+- [x] Phase 3a: Bun.serve AG-UI server: POST /agui SSE endpoint, RunAgentInput handling, event encoder, run lifecycle, cancellation
+- [x] Phase 3b: orchestration layer — AgentProvider interface, native runtime, agui-remote, hermes-python, approval gate
+- [x] Phase 3c: embeddings pipeline + pgvector search + context injection
+- [x] Phase 3d: MCP client (stdio) + SKILL.md loader
+- [x] Phase 3e: better-auth scaffold + compute/run_code tool (pool stub)
+- [x] Phase 3 mock E2E: `HERMES_MOCK_LLM=1` + `bun run verify:phase3` (no API key)
+- [x] Phase 3 real LLM: `bun run verify:phase3:llm` (skips without `LLM_API_KEY`)
+- [x] Phase 5 A2UI demos: `bun run verify:a2ui` (cron, memory, skills mock scenarios)
+- [x] Phase 4a: chat core — composer, virtualized message list, markdown/Shiki, tool cards, thinking blocks
+- [x] Phase 4b: @ag-ui/client wiring — dispatcher, approval resolve API, session load, cancel
+- [x] Phase 4c: AgentStatePanel, frontend tools registry, custom Hermes events (context, toasts)
+- [x] Phase 5: custom A2UI renderer — catalog + Hermes widgets (skill card, memory editor, cron picker)
+- [x] Phase 6: panels — sessions, workspace, skills, memory, cron, profiles, settings (+ MCP sub-panel)
+- [x] Cross-cutting: structured logging, run event recording, debug endpoints + **replay UI**, typed errors, ADRs
+- [x] Phase 7: command palette (Ctrl+K), keyboard shortcuts, themes, mobile bottom nav
+- [x] Phase 7: Lighthouse verify (`bun run verify:lighthouse`) — score ≥ 90 on built shell
+- [x] CI: GitHub Actions (unit tests, mock AG-UI, Playwright, Postgres integration)
+- [x] Phase 7: Playwright smoke (`bun run test:e2e`)
+- [x] Full stack verify: `bun run verify:all` (all phases green locally)
 
 ## 1. Locked decisions and constraints
 
@@ -26,7 +47,7 @@ Migrate the Hermes Agent WebUI concept from vanilla JS (7 modules, ~22k lines, n
 - Runtime and tooling: **Bun** everywhere — package manager, script runner, test runner (`bun test`), backend server runtime.
 - Frontend: **React 19 + React Compiler + Vite (SWC) + TypeScript strict**. Chosen for the only stable first-party AG-UI/A2UI support plus richest ecosystem; speed engineered via compiler, virtualization, code-splitting, workers.
 - Protocols: **AG-UI** (agent-user event stream; CopilotKit SDK) and **A2UI** (Google's declarative generative UI, v0.9 line) carried over AG-UI.
-- Database: **Postgres 18 + pgvector 0.8.5** (`pgvector/pgvector:0.8.5-pg18`, latest stable line) in Docker with **bind-mounted data dir** (no named volumes — addresses volume-loss concern). Access via native **`Bun.sql`**; **Drizzle ORM** for schema/migrations only.
+- Database: **Postgres 17 + pgvector 0.8.5** (`pgvector/pgvector:0.8.5-pg17`, latest stable line) in Docker with **bind-mounted data dir** (no named volumes — addresses volume-loss concern). Access via native **`Bun.sql`**; **Drizzle ORM** for schema/migrations only.
 - Design: dark-first, **GitHub Primer** design tokens, Cursor-style layout.
 - Licensing hard rule: **MIT / Apache-2.0 / PostgreSQL License only.** No GPL, AGPL, SSPL, BSL anywhere in the dependency tree (rules out Open WebUI, MongoDB, Redis). Every new dependency gets a license check before install.
 - Big-company backing: React (Meta), TypeScript (Microsoft), A2UI (Google), AG-UI (CopilotKit + Microsoft Agent Framework + Google ADK integrations), Primer (GitHub), Postgres (industry), Vite (VoidZero), shadcn/ui (Vercel-affiliated), Bun (Oven).
@@ -39,7 +60,7 @@ hermes-ui/
 ├─ package.json                 # workspaces: app, server, packages/*; scripts below
 ├─ bunfig.toml
 ├─ tsconfig.base.json           # strict, path aliases @app/*, @server/*, @shared/*
-├─ docker-compose.yml           # postgres 18 + pgvector, pinned tag, bind mount
+├─ docker-compose.yml           # postgres 17 + pgvector, bind mount
 ├─ .env.example                 # DATABASE_URL, HERMES_DATA_DIR, HERMES_BACKUP_DIR,
 │                               # LLM_BASE_URL, LLM_API_KEY, EMBEDDINGS_MODEL...
 │  (PG data + backups live OUTSIDE the repo: C:\hermes-data\{postgres,backups})
@@ -213,7 +234,7 @@ cron/               scheduler.ts (croner; jobs run agent turns headlessly, resul
 - Agent loop: build context (profile system prompt + semantic memory recall + matched skills) → stream LLM → parse tool calls → approval gate if dangerous → execute → loop until done; every event mirrored to AG-UI stream and persisted to `messages`.
 - Model-agnostic: any OpenAI-compatible endpoint (OpenRouter, vLLM/Ollama serving Hermes models, Bedrock proxy) via `LLM_BASE_URL`/`LLM_API_KEY`.
 
-## 7. Database schema (Postgres 18 + pgvector 0.8.5)
+## 7. Database schema (Postgres 17 + pgvector 0.8.5)
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -261,14 +282,14 @@ btree(messages.session_id, created_at);
 
 ## 8. Docker + volume safety
 
-`docker-compose.yml`: `pgvector/pgvector:0.8.5-pg18` (exact tag pinned), `ports: 5433:5432`.
+`docker-compose.yml`: `pgvector/pgvector:0.8.5-pg17` (exact tag pinned), `ports: 5433:5432`.
 
-**Data volume lives in a separate location, outside the project folder**: the bind mount path comes from env — `volumes: ${HERMES_DATA_DIR:-C:/hermes-data}/postgres:/var/lib/postgresql` (`HERMES_DATA_DIR` in `.env`, default `C:\hermes-data` on this machine). Consequences:
+**Data volume lives in a separate location, outside the project folder**: the bind mount path comes from env — `volumes: ${HERMES_DATA_DIR:-C:/hermes-data}/postgres:/var/lib/postgresql/data` (`HERMES_DATA_DIR` in `.env`, default `C:\hermes-data` on this machine). Consequences:
 
 - Deleting, moving, or re-cloning the `hermes-ui` project never touches the database.
 - `docker compose down -v` cannot destroy it (bind mounts are not managed volumes).
 - Same for backups: `HERMES_BACKUP_DIR` (default `C:\hermes-data\backups`) keeps dumps out of the repo too.
-- **PG18 breaking change respected**: from Postgres 18 the image's volume root is `/var/lib/postgresql` (version-specific `PGDATA` like `18/docker` underneath), so we mount that parent dir — this also enables fast `pg_upgrade --link` major-version upgrades later, with versioned subfolders coexisting in the same data dir.
+- **PG17 volume path**: mount `${HERMES_DATA_DIR}/postgres` → `/var/lib/postgresql/data`.
 
 Healthcheck `pg_isready`, `restart: unless-stopped`. Backup: `bun run db:backup` → `${HERMES_BACKUP_DIR}/hermes-YYYYMMDD-HHmmss.sql` via `pg_dump`; restore script + README section on moving the data folder between machines.
 
@@ -349,8 +370,8 @@ Steps, in order:
 
 Deliverable: empty but navigable Cursor-look shell. AC: Lighthouse perf ≥ 95; `bun test` green; theme toggle + panel collapse work.
 
-### Phase 2 — Database (Postgres 18 + pgvector 0.8.5)
-1. `docker-compose.yml`: `pgvector/pgvector:0.8.5-pg18` pinned digest, port 5433, bind mount `${HERMES_DATA_DIR:-C:/hermes-data}/postgres:/var/lib/postgresql` (separate location outside the project; PG18 volume path — parent dir, not `/data`), healthcheck, `restart: unless-stopped`; `.env.example` with `DATABASE_URL=postgres://hermes:hermes@localhost:5433/hermes`, `HERMES_DATA_DIR`, `HERMES_BACKUP_DIR`.
+### Phase 2 — Database (Postgres 17 + pgvector 0.8.5)
+1. `docker-compose.yml`: `pgvector/pgvector:0.8.5-pg17`, port 5433, bind mount `${HERMES_DATA_DIR:-C:/hermes-data}/postgres:/var/lib/postgresql/data` (separate location outside the project), healthcheck, `restart: unless-stopped`; `.env.example` with `DATABASE_URL=postgres://hermes:hermes@localhost:5433/hermes`, `HERMES_DATA_DIR`, `HERMES_BACKUP_DIR`.
 2. `db/client.ts`: `Bun.sql` pool from env; ping-on-boot with clear error if PG down.
 3. `db/schema.ts` (Drizzle): all tables from §7 including generated `tsvector` column (raw SQL migration where Drizzle lacks support), `vector(1024)` columns, HNSW + GIN + btree indexes; `migrate.ts` runs drizzle-kit migrations idempotently; embedding dimension read from env at first migration.
 4. Repositories (`db/repositories/*`): typed CRUD + pagination (cursor on `created_at,id`): sessions (with group aggregation), messages (bulk insert per run, FTS query), memory, skills, cron (+cron_runs), profiles, settings (key-value upsert).

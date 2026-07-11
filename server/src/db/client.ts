@@ -22,13 +22,20 @@ export function getDb() {
   return dbInstance
 }
 
+let lastPingFailLog = 0
+const PING_FAIL_LOG_INTERVAL_MS = 60_000
+
 export async function pingDatabase(): Promise<boolean> {
   try {
     const sql = getSql()
     await sql`SELECT 1 AS ok`
     return true
   } catch (err) {
-    logger.error('Database ping failed', { error: String(err) })
+    const now = Date.now()
+    if (now - lastPingFailLog >= PING_FAIL_LOG_INTERVAL_MS) {
+      lastPingFailLog = now
+      logger.warn('Database unreachable (will retry)', { error: String(err) })
+    }
     return false
   }
 }

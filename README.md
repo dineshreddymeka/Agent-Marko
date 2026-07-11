@@ -1,82 +1,39 @@
-# Agent-Marko
+# Hermes UI
 
-Modern Bun monorepo for the Hermes Agent WebUI — React 19 frontend, Bun AG-UI orchestration server, Postgres 18 + pgvector persistence, with first-class **AG-UI** and **A2UI** protocol support.
+Modern Hermes Agent WebUI — Bun monorepo with React 19 frontend and Bun server.
 
 ## Quick start
 
-**Prerequisites:** [Bun](https://bun.sh) 1.2+, [Docker Desktop](https://www.docker.com/products/docker-desktop/) (for Postgres).
-
-```powershell
-# Clone and install
-cd Agent-Marko
+```bash
 bun install
-
-# Configure environment
-copy .env.example .env
-
-# Start database (data stored outside repo at C:\hermes-data\postgres)
-bun run db:up
-bun run migrate
-
-# Run dev (Vite :5173 + server :3001)
 bun run dev
 ```
 
-Open http://localhost:5173 — the Vite dev server proxies `/api` and `/agui` to the Bun backend.
+- Frontend: http://localhost:5173
+- API health: http://127.0.0.1:3001/api/health
 
 ## Scripts
 
 | Script | Description |
 |--------|-------------|
-| `bun run dev` | Start frontend + backend concurrently |
-| `bun run build` | Production build (app + server) |
-| `bun test` | Run all workspace tests |
-| `bun run lint` | ESLint across the monorepo |
-| `bun run db:up` | Start Postgres 18 + pgvector container |
-| `bun run db:down` | Stop Postgres container |
-| `bun run migrate` | Apply SQL migrations |
-| `bun run db:backup` | Timestamped `pg_dump` to `HERMES_BACKUP_DIR` |
-| `bun run db:restore` | Restore from a backup file |
+| `bun run dev` | Start Vite app + Bun server concurrently |
+| `bun run build` | Build app and server |
+| `bun run test` | Run smoke tests across workspaces |
+| `bun run lint` | ESLint |
+| `bun run db:up` | Start Postgres + pgvector (Docker) |
+| `bun run db:down` | Stop database |
+| `bun run migrate` | Run DB migrations |
+| `bun run verify:phase2` | Docker up, migrate, integration tests, health, backup |
+| `bun run verify:phase3` | Mock LLM AG-UI stream + SSE smoke (no API key) |
+| `bun run verify:phase3:llm` | Real LLM smoke (skips if no API key) |
+| `bun run verify:offline` | Debug replay without Postgres (in-memory run buffer) |
+| `bun run verify:a2ui` | A2UI demo scenarios (cron, memory, skills) |
+| `bun run verify:lighthouse` | Lighthouse performance on built shell |
+| `bun run verify:all` | All verifiers (skips Phase 2 if Docker daemon unavailable) |
+| `bun run test:e2e` | Playwright smoke tests (starts dev server) |
 
-## Environment
+CI runs on push/PR via `.github/workflows/ci.yml` (unit + mock AG-UI + Playwright + Postgres job).
 
-See `.env.example`. Key variables:
+Settings → **Debug** tab: replay recorded AG-UI runs through the UI dispatcher.
 
-- `DATABASE_URL` — Postgres connection (default port **5433**)
-- `HERMES_DATA_DIR` — bind mount root for PG data and logs (default `C:/hermes-data`)
-- `LLM_BASE_URL` / `LLM_API_KEY` — OpenAI-compatible chat completions API
-- `EMBEDDINGS_MODEL` / `EMBEDDING_DIMENSION` — vector search configuration
-- `ALLOW_SIGNUP=false` — single-user mode; localhost dev bypass when unset auth
-- `WORKSPACE_ROOT` — jailed file/shell tool workspace
-
-## Architecture
-
-```
-┌─────────────┐   AG-UI SSE    ┌──────────────────┐   Bun.sql   ┌──────────────┐
-│  React app  │ ◄────────────► │  Bun server      │ ◄──────────►│ Postgres 18  │
-│  (Vite)     │   REST /api    │  agent runtime   │             │ + pgvector   │
-└─────────────┘                └──────────────────┘             └──────────────┘
-       │                               │
-       │ A2UI surfaces                 │ MCP + SKILL.md + cron
-       ▼                               ▼
-  lib/a2ui/                      agent/tools/
-```
-
-- **`app/`** — React 19 + TanStack Router/Query, Zustand stores, Primer dark design tokens
-- **`server/`** — `Bun.serve` AG-UI endpoint, native/agui-remote/hermes-python providers, vector pipeline
-- **`packages/shared/`** — DTOs, custom AG-UI events, A2UI catalog schemas
-
-See `PLAN.md` for the full engineering plan and `docs/PARITY.md` for upstream feature parity.
-
-## Backup & restore
-
-```powershell
-bun run db:backup
-# Creates C:\hermes-data\backups\hermes-YYYYMMDD-HHMMSS.sql
-
-bun run db:restore -- path\to\backup.sql
-```
-
-## License
-
-MIT. Dependency licenses documented in `LICENSES.md` (permissive-only policy: MIT / Apache-2.0 / PostgreSQL / ISC / BSD).
+See [PLAN.md](./PLAN.md) for the full engineering plan.

@@ -31,13 +31,22 @@ export function MemoryEntryEditor({
         className="w-full rounded border border-border bg-canvas px-2 py-1 text-sm text-fg"
         onChange={(e) => onAction?.('change_content', { content: e.target.value })}
       />
-      <button
-        type="button"
-        onClick={() => onAction?.('save', { entryId, kind, content })}
-        className="rounded bg-accent px-3 py-1 text-xs text-white"
-      >
-        Save memory
-      </button>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => onAction?.('delete', { entryId, kind, content })}
+          className="rounded border border-danger/40 px-3 py-1 text-xs text-danger hover:bg-danger/10"
+        >
+          Delete
+        </button>
+        <button
+          type="button"
+          onClick={() => onAction?.('save', { entryId, kind, content })}
+          className="rounded bg-accent px-3 py-1 text-xs text-white"
+        >
+          Save memory
+        </button>
+      </div>
     </div>
   )
 }

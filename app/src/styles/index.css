@@ -1,73 +1,45 @@
 @import 'tailwindcss';
 @import './tokens.css';
 
-@theme {
-  --color-canvas: var(--color-canvas);
-  --color-canvas-subtle: var(--color-canvas-subtle);
-  --color-canvas-inset: var(--color-canvas-inset);
-  --color-border: var(--color-border);
-  --color-border-muted: var(--color-border-muted);
-  --color-fg: var(--color-fg);
-  --color-fg-muted: var(--color-fg-muted);
-  --color-fg-subtle: var(--color-fg-subtle);
-  --color-accent: var(--color-accent);
-  --color-accent-muted: var(--color-accent-muted);
-  --color-accent-emphasis: var(--color-accent-emphasis);
-  --color-success: var(--color-success);
-  --color-danger: var(--color-danger);
-  --color-attention: var(--color-attention);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
-  --radius-sm: var(--radius-sm);
-  --radius-md: var(--radius-md);
-  --radius-lg: var(--radius-lg);
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
-}
-
-body {
-  font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--color-fg);
-  background: var(--color-canvas);
-  -webkit-font-smoothing: antialiased;
-}
-
-:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 4px;
-}
-
-@keyframes pulse-ring {
-  0%,
-  100% {
-    opacity: 1;
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
   }
-  50% {
-    opacity: 0.5;
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: 1.5;
+    color: var(--color-fg);
+    background: var(--color-canvas);
+    -webkit-font-smoothing: antialiased;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  button {
+    font: inherit;
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
 }
 
-.animate-pulse-ring {
-  animation: pulse-ring 2s ease-in-out infinite;
+@layer utilities {
+  .transition-shell {
+    transition-property: width, opacity, transform, background-color, border-color;
+    transition-duration: var(--duration-shell);
+    transition-timing-function: var(--ease-shell);
+  }
 }

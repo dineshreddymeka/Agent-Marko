@@ -141,6 +141,10 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
       break
     }
 
+    case EventType.THINKING_TEXT_MESSAGE_END: {
+      break
+    }
+
     case EventType.TOOL_CALL_START: {
       const e = event as ToolCallStartEvent
       if (e.toolCallId && e.toolCallName) {
@@ -240,7 +244,8 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
       const value = e.value
       if (name === 'hermes.context') {
         const payload = value as HermesContextPayload
-        const used = payload.tokensUsed ?? payload.promptTokens ?? 0
+        const used =
+          payload.tokensUsed ?? payload.totalTokens ?? payload.promptTokens ?? 0
         const limit = payload.tokensMax ?? payload.contextLimit ?? 128_000
         chat.setContextUsage({ used, limit })
       } else if (name === 'hermes.title') {

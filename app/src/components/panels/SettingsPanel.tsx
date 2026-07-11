@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSettingsStore } from '@app/stores/settings'
 import { McpSubPanel } from '@app/components/panels/McpSubPanel'
+import { DebugReplayPanel } from '@app/components/panels/DebugReplayPanel'
 import {
   fetchApprovalConfig,
   saveApprovalConfig,
@@ -9,7 +10,7 @@ import {
 import { Moon, Sun, Monitor, ShieldCheck, X } from 'lucide-react'
 
 export function SettingsPanel() {
-  const [tab, setTab] = useState<'general' | 'approval' | 'mcp'>('general')
+  const [tab, setTab] = useState<'general' | 'approval' | 'mcp' | 'debug'>('general')
   const theme = useSettingsStore((s) => s.theme)
   const setTheme = useSettingsStore((s) => s.setTheme)
   const model = useSettingsStore((s) => s.model)
@@ -48,7 +49,7 @@ export function SettingsPanel() {
     <div className="p-4">
       <h2 className="mb-4 text-sm font-medium text-fg">Settings</h2>
       <div className="mb-4 flex gap-1 border-b border-border">
-        {(['general', 'approval', 'mcp'] as const).map((t) => (
+        {(['general', 'approval', 'mcp', 'debug'] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -66,6 +67,8 @@ export function SettingsPanel() {
 
       {tab === 'mcp' ? (
         <McpSubPanel />
+      ) : tab === 'debug' ? (
+        <DebugReplayPanel />
       ) : tab === 'approval' ? (
         <div className="space-y-4 text-sm">
           <section className="rounded-lg border border-border p-3">

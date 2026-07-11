@@ -1,6 +1,7 @@
 services:
   postgres:
-    image: pgvector/pgvector:0.8.5-pg18
+    # pgvector/pgvector:0.8.5-pg17 — Artifactory-verified (pin digest when available)
+    image: pgvector/pgvector:0.8.5-pg17
     ports:
       - '5433:5432'
     environment:
@@ -8,7 +9,7 @@ services:
       POSTGRES_PASSWORD: hermes
       POSTGRES_DB: hermes
     volumes:
-      - ${HERMES_DATA_DIR:-C:/hermes-data}/postgres:/var/lib/postgresql
+      - ${HERMES_DATA_DIR:-C:/hermes-data}/postgres:/var/lib/postgresql/data
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U hermes']
       interval: 5s

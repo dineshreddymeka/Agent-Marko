@@ -1,35 +1,43 @@
-import { PanelRightClose, PanelRight } from 'lucide-react'
+import { PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { useUiStore } from '@app/stores/ui'
-import { AgentStatePanel } from '@app/components/state/AgentStatePanel'
-import { cn } from '@app/lib/utils'
 
-export function RightPanel() {
-  const open = useUiStore((s) => s.rightPanelOpen)
-  const toggle = useUiStore((s) => s.toggleRightPanel)
+interface RightPanelProps {
+  title?: string
+  children?: React.ReactNode
+}
+
+export function RightPanel({ title = 'Panel', children }: RightPanelProps) {
+  const rightPanelOpen = useUiStore((s) => s.rightPanelOpen)
+  const toggleRightPanel = useUiStore((s) => s.toggleRightPanel)
 
   return (
     <aside
-      className={cn(
-        'flex shrink-0 flex-col border-l border-border bg-canvas-subtle transition-[width] duration-150 ease-out',
-        open ? 'w-[var(--right-panel-width)]' : 'w-0 overflow-hidden border-l-0',
-        'max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-40 max-md:shadow-xl',
-      )}
+      aria-label="Right panel"
+      className={[
+        'flex shrink-0 flex-col border-l border-border bg-canvas-subtle transition-shell overflow-hidden',
+        'max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-40 max-md:shadow-xl max-md:pb-14',
+        rightPanelOpen ? 'w-80 opacity-100' : 'w-0 opacity-0 max-md:pointer-events-none border-l-0',
+      ].join(' ')}
     >
-      <div className="flex h-10 items-center justify-between border-b border-border px-3">
-        <span className="text-xs font-medium uppercase tracking-wide text-fg-muted">
-          Agent state
-        </span>
+      <div className="flex h-12 items-center justify-between border-b border-border px-3">
+        <span className="text-sm font-medium text-fg">{title}</span>
         <button
           type="button"
-          onClick={toggle}
-          className="rounded p-1 text-fg-muted hover:bg-canvas-inset hover:text-fg"
           title="Toggle right panel (Ctrl+Alt+B)"
+          aria-label="Toggle right panel"
+          onClick={toggleRightPanel}
+          className="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted hover:bg-canvas hover:text-fg"
         >
-          {open ? <PanelRightClose size={16} /> : <PanelRight size={16} />}
+          {rightPanelOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto">
-        <AgentStatePanel />
+
+      <div className="flex-1 overflow-auto p-4">
+        {children ?? (
+          <p className="text-sm text-fg-muted">
+            Agent state and context details will appear here in Phase 4.
+          </p>
+        )}
       </div>
     </aside>
   )

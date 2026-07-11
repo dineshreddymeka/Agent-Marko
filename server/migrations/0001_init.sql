@@ -1,4 +1,4 @@
--- Hermes UI initial schema (Postgres 18 + pgvector)
+-- Hermes UI initial schema (Postgres 17 + pgvector)
 CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE IF NOT EXISTS sessions (

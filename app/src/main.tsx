@@ -1,10 +1,12 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { RouterProvider } from '@tanstack/react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { router } from '@app/router'
-import { ErrorBoundary } from '@app/components/common/ErrorBoundary'
+import { RouterProvider, createRouter } from '@tanstack/react-router'
+import { routeTree } from '@app/routeTree.gen'
+import { applyTheme } from '@app/stores/ui'
 import '@app/styles/index.css'
+
+applyTheme('dark')
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -15,15 +17,18 @@ const queryClient = new QueryClient({
   },
 })
 
-const root = document.getElementById('root')
-if (!root) throw new Error('Root element not found')
+const router = createRouter({ routeTree })
 
-createRoot(root).render(
+declare module '@tanstack/react-router' {
+  interface Register {
+    router: typeof router
+  }
+}
+
+createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
-    </ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
   </StrictMode>,
 )

@@ -5,6 +5,16 @@ import { logger } from '../log'
 
 const MIGRATIONS_DIR = join(import.meta.dir, '../../migrations')
 
+function stripLeadingComments(chunk: string): string {
+  return chunk
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('--'))
+    .join('\n')
+    .trim()
+}
+
+export { stripLeadingComments }
+
 export async function runMigrations(): Promise<void> {
   const sql = getSql()
   await sql`
@@ -31,8 +41,8 @@ export async function runMigrations(): Promise<void> {
 
     const statements = contents
       .split(';')
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0 && !s.startsWith('--'))
+      .map((s) => stripLeadingComments(s.trim()))
+      .filter((s) => s.length > 0)
 
     for (const statement of statements) {
       await sql.unsafe(`${statement};`)

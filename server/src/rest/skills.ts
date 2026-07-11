@@ -1,20 +1,25 @@
 import { jsonResponse, parseJson } from './helpers'
+import { requireDatabaseOrResponse, withDatabase } from './db-guard'
 
 export async function handleSkills(req: Request, path: string): Promise<Response | null> {
   const { skillsRepo } = await import('../db/repositories/skills')
   const parts = path.split('/').filter(Boolean)
 
   if (req.method === 'GET' && parts.length === 2) {
-    return jsonResponse(await skillsRepo.list())
+    return jsonResponse(await withDatabase(() => skillsRepo.list(), []))
   }
 
   if (req.method === 'POST' && parts.length === 3 && parts[2] === 'sync') {
+    const unavailable = await requireDatabaseOrResponse()
+    if (unavailable) return unavailable
     const { syncSkillsFromDisk } = await import('../skills/loader')
     const count = await syncSkillsFromDisk()
     return jsonResponse({ synced: count })
   }
 
   if (req.method === 'POST' && parts.length === 2) {
+    const unavailable = await requireDatabaseOrResponse()
+    if (unavailable) return unavailable
     const body = await parseJson(req)
     if (!body?.name || !body?.bodyMd) {
       return jsonResponse({ error: 'name and bodyMd required' }, 400)

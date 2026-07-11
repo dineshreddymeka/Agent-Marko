@@ -1,4 +1,5 @@
 import { jsonResponse, parseJson } from './helpers'
+import { requireDatabaseOrResponse, withDatabase } from './db-guard'
 
 export async function handleCron(req: Request, path: string): Promise<Response | null> {
   const { cronRepo } = await import('../db/repositories/cron')
@@ -6,10 +7,12 @@ export async function handleCron(req: Request, path: string): Promise<Response |
   const parts = path.split('/').filter(Boolean)
 
   if (req.method === 'GET' && parts.length === 2) {
-    return jsonResponse(await cronRepo.listJobs())
+    return jsonResponse(await withDatabase(() => cronRepo.listJobs(), []))
   }
 
   if (req.method === 'POST' && parts.length === 2) {
+    const unavailable = await requireDatabaseOrResponse()
+    if (unavailable) return unavailable
     const body = await parseJson(req)
     if (!body?.name || !body?.schedule || !body?.prompt) {
       return jsonResponse({ error: 'name, schedule, prompt required' }, 400)

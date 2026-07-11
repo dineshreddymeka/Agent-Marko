@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Unit tests
+        run: bun test app server packages/shared
+
+      - name: Build app
+        run: bun run --filter app build
+
+      - name: Phase 3 verify (mock AG-UI)
+        run: bun run verify:phase3
+
+      - name: Offline debug buffer smoke
+        run: bun run verify:offline
+
+      - name: A2UI demo scenarios
+        run: bun run verify:a2ui
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install chromium --with-deps
+
+      - name: Playwright smoke
+        run: bun run test:e2e
+
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.5-pg17
+        env:
+          POSTGRES_USER: hermes
+          POSTGRES_PASSWORD: hermes
+          POSTGRES_DB: hermes
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U hermes"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Migrate
+        env:
+          DATABASE_URL: postgres://hermes:hermes@localhost:5433/hermes
+        run: bun run migrate
+
+      - name: DB integration tests
+        env:
+          DATABASE_URL: postgres://hermes:hermes@localhost:5433/hermes
+          HERMES_INTEGRATION_TEST: "1"
+        run: bun test server/test/db.integration.test.ts
