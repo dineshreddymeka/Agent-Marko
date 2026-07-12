@@ -23,7 +23,7 @@ Rebuild the agent WebUI as **Open Jarvis** from the Hermes WebUI concept (vanill
 | ✅ | 6 Panels | **Wired** — sidebar sessions + `/panel/$name` routes + REST |
 | ✅ | 7 Polish | **Done** — mobile nav, Playwright, Lighthouse **95** |
 | ✅ | Cross-cutting | **Done** — logging, debug API, replay UI in Settings |
-| ✅ | 12a System maintenance cron | **Done** — DB Consistency + Bug Bounty + Status Auto-Approve @ 5 min |
+| ✅ | 12a System maintenance cron | **Done** — DB Consistency + Bug Bounty + Status Auto-Approve @ **2 min** |
 | 🔲 | 8 Office / Microsoft Graph | **Pending** — auto-approve |
 | 🔲 | 9 Open Cowork | **Pending** — auto-approve |
 | 🔲 | 10 Jarvis indexer REST/tools | **Pending** — auto-approve |
