@@ -39,7 +39,6 @@ export async function handleDebug(req: Request, path: string): Promise<Response 
         .catch(() => null),
       compute: getComputePoolStatus(),
       cronJobs: activeCronCount(),
-<<<<<<< HEAD
       oauthProviders: oauthProvidersConfigured(),
       microsoftSso: {
         configured: microsoftConfigured,
@@ -47,9 +46,7 @@ export async function handleDebug(req: Request, path: string): Promise<Response 
         autoSso: config.MICROSOFT_SSO_AUTO,
       },
       llm: getLlmDebugInfo(),
-=======
       cleanup: getCleanupStatus(),
->>>>>>> origin/cursor/setup-dev-environment-9393
       memory: process.memoryUsage(),
       uptime: process.uptime(),
     })
