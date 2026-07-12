@@ -35,6 +35,8 @@
     "office:sso-setup": "bun run scripts/setup-microsoft-sso.ts",
     "office:sso-open": "bun run scripts/setup-microsoft-sso.ts -- --open",
     "cowork:mcp-bridge": "bun run server/src/cowork/mcp-bridge-main.ts",
+    "mcp:mock-http": "bun run server/scripts/mock-mcp-http.ts",
+    "mcp:mock-chrome": "bun run server/scripts/mock-mcp-chrome.ts",
     "openapi:export": "bun run scripts/openapi-export.ts",
     "sca:check": "bun run scripts/sca-check.ts",
     "clean": "bun run scripts/cleanup.ts",
