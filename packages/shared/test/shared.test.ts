@@ -4,7 +4,7 @@ import type { HermesCustomEventName } from '../src/agui-events'
 
 describe('@hermes/shared', () => {
   test('exports catalog component ids', () => {
-    expect(HERMES_CATALOG_IDS).toHaveLength(4)
+    expect(HERMES_CATALOG_IDS).toHaveLength(6)
     expect(HERMES_CATALOG_IDS).toContain('hermes:SkillCard')
   })
 

@@ -137,7 +137,7 @@ describe('Cowork integration (mock stdio child)', () => {
     await client.start({ cwd: workspace })
 
     await expect(client.runTask('t-crash', 'doomed', 5_000)).rejects.toThrow(
-      /crashed during task/,
+      /stopped during task/,
     )
 
     // Client should be marked not-started / crashed; a fresh start via new client works.
