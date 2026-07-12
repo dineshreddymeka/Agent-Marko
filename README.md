@@ -34,8 +34,9 @@ bun run dev
 | `bun run verify:lighthouse` | Lighthouse ≥ 90 on built shell |
 | `bun run verify:all` | Full matrix (skips Phase 2 if Docker unavailable) |
 
-<<<<<<< HEAD
-CI runs on push/PR via `.github/workflows/ci.yml` plus dedicated free security workflows.
+SoT → test mapping: [docs/FEATURE-VERIFICATION.md](./docs/FEATURE-VERIFICATION.md).
+
+CI runs on push/PR via `.github/workflows/ci.yml` (unit + mock AG-UI + offline + A2UI + Playwright; separate Postgres **17**/pgvector migrate/integration job) plus dedicated free security workflows.
 
 ### Free security scanning (GitHub + OSS)
 
@@ -89,11 +90,6 @@ To enable it:
 5. Name: `SONAR_TOKEN`, value: your token.
 
 Until the secret is set, the SonarCloud job skips cleanly.
-=======
-SoT → test mapping: [docs/FEATURE-VERIFICATION.md](./docs/FEATURE-VERIFICATION.md).
-
-CI (`.github/workflows/ci.yml`): unit + mock AG-UI + offline + A2UI + Playwright; separate Postgres **18** migrate/integration job.
->>>>>>> origin/main
 
 Settings → **Debug** tab: replay recorded AG-UI runs through the UI dispatcher.
 
