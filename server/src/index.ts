@@ -71,6 +71,8 @@ async function boot(): Promise<void> {
 
   await runMigrations()
   await loadApprovalSettings(config.AUTO_APPROVE_ALL)
+  const { ensureAutoApproveAllEnabled } = await import('./agent/approval')
+  if (config.AUTO_APPROVE_ALL) await ensureAutoApproveAllEnabled()
   await syncSkillsFromDisk()
   await startIndexerWorker()
   startWorkspaceWatcher()

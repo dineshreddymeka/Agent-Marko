@@ -37,7 +37,9 @@
     "cowork:mcp-bridge": "bun run server/src/cowork/mcp-bridge-main.ts",
     "openapi:export": "bun run scripts/openapi-export.ts",
     "sca:check": "bun run scripts/sca-check.ts",
-    "clean": "bun run scripts/cleanup.ts"
+    "clean": "bun run scripts/cleanup.ts",
+    "verify:live": "bun run scripts/verify-live-features.ts",
+    "keep-awake": "echo On your Windows laptop: double-click scripts/keep-awake-windows.cmd  (or: powershell -ExecutionPolicy Bypass -File scripts/keep-awake.ps1 -IgnoreLidCloseOnAc)"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
