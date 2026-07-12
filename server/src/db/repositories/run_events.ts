@@ -1,4 +1,4 @@
-import { asc, desc, eq, sql } from 'drizzle-orm'
+import { asc, desc, eq, lt, sql } from 'drizzle-orm'
 import { getDb } from '../client'
 import { runEvents } from '../schema'
 
@@ -73,5 +73,14 @@ export const runEventsRepo = {
       eventCount: r.eventCount,
       lastAt: r.lastAt.toISOString(),
     }))
+  },
+
+  async deleteOlderThan(cutoff: Date): Promise<number> {
+    const db = getDb()
+    const rows = await db
+      .delete(runEvents)
+      .where(lt(runEvents.createdAt, cutoff))
+      .returning({ id: runEvents.id })
+    return rows.length
   },
 }

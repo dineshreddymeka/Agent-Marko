@@ -32,6 +32,11 @@ const envSchema = z.object({
   AUTO_APPROVE_ALL: envBool(false),
   CONTEXT_TOKEN_LIMIT: z.coerce.number().default(128_000),
   CONTEXT_INJECTION_BUDGET: z.coerce.number().default(8000),
+  CLEANUP_ENABLED: envBool(true),
+  CLEANUP_INTERVAL_MS: z.coerce.number().default(3_600_000),
+  CLEANUP_RUN_EVENT_RETENTION_DAYS: z.coerce.number().default(7),
+  CLEANUP_ARCHIVED_SESSION_RETENTION_DAYS: z.coerce.number().default(30),
+  CLEANUP_SANDBOX_RETENTION_MINUTES: z.coerce.number().default(60),
 })
 
 export type Env = z.infer<typeof envSchema>

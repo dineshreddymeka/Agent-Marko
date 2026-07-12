@@ -10,6 +10,7 @@ export async function handleDebug(req: Request, path: string): Promise<Response 
     const { queueDepth } = await import('../vector/indexer')
     const { getComputePoolStatus } = await import('../compute/pool')
     const { activeCronCount } = await import('../cron/scheduler')
+    const { getCleanupStatus } = await import('../cleanup/worker')
 
     const dbOk = await pingDatabase()
     return jsonResponse({
@@ -20,6 +21,7 @@ export async function handleDebug(req: Request, path: string): Promise<Response 
       embeddingQueue: queueDepth(),
       compute: getComputePoolStatus(),
       cronJobs: activeCronCount(),
+      cleanup: getCleanupStatus(),
       memory: process.memoryUsage(),
       uptime: process.uptime(),
     })

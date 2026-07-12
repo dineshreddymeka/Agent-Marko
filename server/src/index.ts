@@ -3,6 +3,7 @@ import { handleAguiCancel, handleAguiOptions, handleAguiRequest } from './agui/e
 import { guardRequest, auth } from './auth'
 import { config } from './config'
 import { startCronScheduler } from './cron/scheduler'
+import { startCleanupWorker } from './cleanup/worker'
 import { pingDatabase } from './db/client'
 import { runMigrations } from './db/migrate'
 import { getHealthResponse } from './health'
@@ -42,6 +43,7 @@ async function boot(): Promise<void> {
   await loadApprovalSettings(config.AUTO_APPROVE_ALL)
   await syncSkillsFromDisk()
   await startCronScheduler()
+  if (config.CLEANUP_ENABLED) startCleanupWorker()
   await connectAll()
   await refreshMcpToolBridge()
   logger.info('Boot complete')
