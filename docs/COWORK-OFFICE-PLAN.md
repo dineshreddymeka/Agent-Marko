@@ -70,6 +70,21 @@ filtering/pagination across task fields.
 7. **Debug cleanup** — `#region agent log` fetch blocks removed from
    `rest/cowork.ts`, `cowork/run-task.ts`, `agui/endpoint.ts`.
 
+## Phase 2 MCP bridge — Slice B (landed)
+
+Jarvis is now an MCP **server** (stdio) that Open Cowork calls as MCP client
+(`server/src/cowork/mcp-bridge.ts`, CLI `mcp-bridge-main.ts`, root script
+`bun run cowork:mcp-bridge`). Three tools only — not the Hermes registry:
+`jarvis_report_progress` (in-memory task progress + durable `COWORK_PROGRESS`
+run_event), `jarvis_ask` (stores question, acks with question id, never
+blocks), `jarvis_fetch_context` (read-only settings/memory snippet; safe empty
+result). Registration: `POST /api/cowork/mcp-bridge/register` upserts the
+`mcp-jarvis-bridge` entry into `%APPDATA%/open-cowork/mcp-config.json` (safe
+merge; register with Cowork closed); `GET /api/cowork/setup` now returns
+`mcpBridge: { registered, command, configPath, hint }`. Task detail exposes
+`progress`/`questions`; jarvis-bridge skill tells workers to report progress
+via the MCP Jarvis tools.
+
 ## Chat integration (Slice C — streaming)
 
 Open Cowork is reachable from **chat**, not only the Cowork panel:
