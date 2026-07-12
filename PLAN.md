@@ -9,9 +9,9 @@ Rebuild the agent WebUI as **Open Jarvis** from the Hermes WebUI concept (vanill
 
 ## Task checklist (local progress — reconcile to BMC SoT)
 
-**Last updated:** 2026-07-12 · Repo: [Agent-Marko](https://github.com/dineshreddymeka/Agent-Marko) · **SoT:** BMC-backend/HERMES-UI-PLAN.md
+**Last updated:** 2026-07-12 · Repo: [Agent-Marko](https://github.com/dineshreddymeka/Agent-Marko) · Draft PR: [#6](https://github.com/dineshreddymeka/Agent-Marko/pull/6) · **SoT:** BMC-backend/HERMES-UI-PLAN.md
 
-**Policy (pending phases):** all pending work runs under **global auto-approval** (`approval.autoApproveAll=true`, **locked — never off**). System crons fire every **2 minutes** (`*/2 * * * *`), check status, auto-fix safe issues, and **auto-approve any pending HITL approvals**. Keep the laptop awake so the API process and cron scheduler stay running.
+**Policy (pending phases):** all pending work runs under **global auto-approval** (`approval.autoApproveAll=true`, **locked — never off**). System crons fire every **2 minutes** (`*/2 * * * *`), check status, auto-fix safe issues, and **auto-approve any pending HITL approvals**. On the **Windows laptop**, run `scripts\keep-awake-windows.cmd` so the machine stays awake and the 2-minute checker keeps firing.
 
 | | Phase | Status |
 |---|--------|--------|
@@ -75,8 +75,13 @@ Rebuild the agent WebUI as **Open Jarvis** from the Hermes WebUI concept (vanill
   - Cowork suite **114 pass**; DB integration on local Postgres (`HERMES_INTEGRATION_TEST=1`, port 5432|5433)
   - System crons manually triggered OK (DB Consistency / Bug Bounty / Status Auto-Approve)
   - Gap: live `Open Cowork.exe` still Windows-only (exe missing on Linux cloud agents)
+- [x] **Windows laptop keep-awake (your PC):** `scripts\keep-awake-windows.cmd` + `scripts\keep-awake.ps1`
+  - Blocks sleep via `SetThreadExecutionState`; sleep/hibernate/monitor = Never (AC + battery)
+  - Optional `-IgnoreLidCloseOnAc` (lid close does nothing while plugged in)
+  - Every **2 minutes** pings `/api/health` + `/api/cron/system` + prints `autoApproveAll`
+  - Documented in README Quick start · PR: https://github.com/dineshreddymeka/Agent-Marko/pull/6
 
-### Pending phases (all auto-approval + 5-min status cron)
+### Pending phases (all auto-approval + 2-min status cron)
 
 > **Auto-approval rule:** auto-approve is **locked on** (API/UI cannot turn it off). Boot + Status Auto-Approve cron every 2 minutes re-assert and auto-approve anything still pending. System/cron workflows use `headlessAutoApprove: true`. Keep the laptop from sleeping so cron keeps firing.
 
