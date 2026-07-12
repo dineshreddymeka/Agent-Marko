@@ -2907,6 +2907,94 @@
         }
       }
     },
+    "/api/cowork/tasks/{taskId}/message": {
+      "post": {
+        "tags": [
+          "Cowork"
+        ],
+        "summary": "Send follow-up message into a live Cowork session",
+        "security": [
+          {
+            "SessionCookie": []
+          },
+          {
+            "BearerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendCoworkTaskMessageBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendCoworkTaskMessageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not live",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendCoworkTaskMessageResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No Cowork session yet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendCoworkTaskMessageResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/cowork/mcp-bridge/register": {
       "post": {
         "tags": [
@@ -8054,6 +8142,35 @@
           "ok",
           "taskId",
           "status"
+        ]
+      },
+      "SendCoworkTaskMessageBody": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "SendCoworkTaskMessageResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "taskId": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "taskId"
         ]
       },
       "OfficeConfigResponse": {
