@@ -1,5 +1,12 @@
 import { create } from 'zustand'
 import type { Message } from '@hermes/shared'
+import {
+  isThinkingBufferKey,
+  streamReleaseAmount,
+  thinkingBufferKey,
+  thinkingMessageId,
+} from '@app/lib/stream-pacing'
+import { prefersReducedMotion } from '@app/hooks/useReducedMotion'
 
 export type ToolCallStatus = 'pending' | 'streaming-args' | 'executing' | 'done' | 'error'
 
@@ -25,6 +32,8 @@ export interface ToolCallState {
   result?: unknown
   status: ToolCallStatus
   messageId?: string
+  /** Live Open Cowork progress line (hermes.cowork.progress). */
+  progress?: string
 }
 
 export interface RunStep {
@@ -41,12 +50,22 @@ export interface PendingApproval {
 
 export type RunStatus = 'idle' | 'running' | 'error' | 'cancelled'
 
+export type RunStageKind = 'starting' | 'thinking' | 'tool' | 'writing' | 'done' | 'error'
+
+export interface RunStage {
+  kind: RunStageKind
+  toolName?: string
+  startedAt: number
+}
+
 interface ChatState {
   messagesBySession: Record<string, ChatMessage[]>
   toolCalls: Record<string, ToolCallState>
   runStatus: RunStatus
   runId: string | null
   runSteps: RunStep[]
+  runStage: RunStage | null
+  stageHistory: Array<RunStage & { endedAt: number }>
   pendingApproval: PendingApproval | null
   error: string | null
   contextUsage: { used: number; limit: number } | null
@@ -58,8 +77,11 @@ interface ChatState {
   appendStreamContent: (messageId: string, delta: string) => void
   flushStreamBuffer: (messageId: string) => void
   appendThinking: (messageId: string, delta: string) => void
+  flushThinkingBuffer: (messageId: string) => void
   setRunStatus: (status: RunStatus) => void
   setRunId: (runId: string | null) => void
+  setStage: (kind: RunStageKind, toolName?: string) => void
+  clearStage: () => void
   setError: (error: string | null) => void
   setPendingApproval: (approval: PendingApproval | null) => void
   setContextUsage: (usage: { used: number; limit: number } | null) => void
@@ -72,41 +94,128 @@ interface ChatState {
   messageFromDto: (msg: Message) => ChatMessage
 }
 
-let flushScheduled = false
-const pendingFlushes = new Set<string>()
+let flushActive = false
 
 function scheduleFlush(
   get: () => ChatState,
   set: (fn: (s: ChatState) => Partial<ChatState>) => void,
 ) {
-  if (flushScheduled) return
-  flushScheduled = true
-  requestAnimationFrame(() => {
-    flushScheduled = false
-    const state = get()
-    const updates: Record<string, string> = {}
-    for (const messageId of pendingFlushes) {
-      const delta = state.streamingBuffer[messageId]
-      if (!delta) continue
-      updates[messageId] = delta
-    }
-    pendingFlushes.clear()
-    if (Object.keys(updates).length === 0) return
+  if (flushActive) return
+  flushActive = true
 
+  const tick = () => {
+    const state = get()
+    const reduced = prefersReducedMotion()
+    const buffer = state.streamingBuffer
+    const keys = Object.keys(buffer).filter((k) => buffer[k])
+
+    if (keys.length === 0) {
+      flushActive = false
+      return
+    }
+
+    const contentUpdates: Record<string, string> = {}
+    const thinkingUpdates: Record<string, string> = {}
+    const nextBuffer = { ...buffer }
+    let hasRemaining = false
+
+    for (const key of keys) {
+      const pending = buffer[key] ?? ''
+      if (!pending) continue
+      const release = streamReleaseAmount(pending.length, reduced)
+      const chunk = pending.slice(0, release)
+      const rest = pending.slice(release)
+      if (rest) {
+        nextBuffer[key] = rest
+        hasRemaining = true
+      } else {
+        delete nextBuffer[key]
+      }
+      if (!chunk) continue
+      if (isThinkingBufferKey(key)) {
+        thinkingUpdates[thinkingMessageId(key)] = chunk
+      } else {
+        contentUpdates[key] = chunk
+      }
+    }
+
+    if (Object.keys(contentUpdates).length > 0 || Object.keys(thinkingUpdates).length > 0) {
+      set((s) => {
+        const messagesBySession = { ...s.messagesBySession }
+        for (const [sessionId, messages] of Object.entries(messagesBySession)) {
+          messagesBySession[sessionId] = messages.map((m) => {
+            const contentDelta = contentUpdates[m.id]
+            const thinkingDelta = thinkingUpdates[m.id]
+            if (!contentDelta && !thinkingDelta) return m
+            return {
+              ...m,
+              content: contentDelta ? m.content + contentDelta : m.content,
+              thinking: thinkingDelta ? (m.thinking ?? '') + thinkingDelta : m.thinking,
+              streaming: true,
+            }
+          })
+        }
+        return { messagesBySession, streamingBuffer: nextBuffer }
+      })
+    } else {
+      set(() => ({ streamingBuffer: nextBuffer }))
+    }
+
+    if (hasRemaining) {
+      requestAnimationFrame(tick)
+    } else {
+      flushActive = false
+    }
+  }
+
+  requestAnimationFrame(tick)
+}
+
+function flushBufferKey(
+  get: () => ChatState,
+  set: (fn: (s: ChatState) => Partial<ChatState>) => void,
+  key: string,
+  opts: { streaming: boolean; field: 'content' | 'thinking' },
+) {
+  const state = get()
+  const delta = state.streamingBuffer[key]
+  if (delta) {
     set((s) => {
       const messagesBySession = { ...s.messagesBySession }
+      const messageId = isThinkingBufferKey(key) ? thinkingMessageId(key) : key
       for (const [sessionId, messages] of Object.entries(messagesBySession)) {
         messagesBySession[sessionId] = messages.map((m) => {
-          const delta = updates[m.id]
-          if (!delta) return m
-          return { ...m, content: m.content + delta, streaming: true }
+          if (m.id !== messageId) return m
+          if (opts.field === 'thinking') {
+            return {
+              ...m,
+              thinking: (m.thinking ?? '') + delta,
+              streaming: opts.streaming,
+            }
+          }
+          return {
+            ...m,
+            content: m.content + delta,
+            streaming: opts.streaming,
+          }
         })
       }
       const streamingBuffer = { ...s.streamingBuffer }
-      for (const id of Object.keys(updates)) delete streamingBuffer[id]
+      delete streamingBuffer[key]
       return { messagesBySession, streamingBuffer }
     })
-  })
+  } else if (!opts.streaming) {
+    const messageId = isThinkingBufferKey(key) ? thinkingMessageId(key) : key
+    set((s) => {
+      const messagesBySession = { ...s.messagesBySession }
+      for (const [sessionId, messages] of Object.entries(messagesBySession)) {
+        messagesBySession[sessionId] = messages.map((m) =>
+          m.id === messageId ? { ...m, streaming: false } : m,
+        )
+      }
+      return { messagesBySession }
+    })
+  }
 }
 
 export const useChatStore = create<ChatState>()((set, get) => ({
@@ -115,6 +224,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   runStatus: 'idle',
   runId: null,
   runSteps: [],
+  runStage: null,
+  stageHistory: [],
   pendingApproval: null,
   error: null,
   contextUsage: null,
@@ -139,53 +250,49 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         [messageId]: (s.streamingBuffer[messageId] ?? '') + delta,
       },
     }))
-    pendingFlushes.add(messageId)
     scheduleFlush(get, set)
   },
 
   flushStreamBuffer: (messageId) => {
-    const state = get()
-    const delta = state.streamingBuffer[messageId]
-    if (delta) {
-      set((s) => {
-        const messagesBySession = { ...s.messagesBySession }
-        for (const [sessionId, messages] of Object.entries(messagesBySession)) {
-          messagesBySession[sessionId] = messages.map((m) =>
-            m.id === messageId
-              ? { ...m, content: m.content + delta, streaming: false }
-              : m,
-          )
-        }
-        const streamingBuffer = { ...s.streamingBuffer }
-        delete streamingBuffer[messageId]
-        return { messagesBySession, streamingBuffer }
-      })
-    } else {
-      set((s) => {
-        const messagesBySession = { ...s.messagesBySession }
-        for (const [sessionId, messages] of Object.entries(messagesBySession)) {
-          messagesBySession[sessionId] = messages.map((m) =>
-            m.id === messageId ? { ...m, streaming: false } : m,
-          )
-        }
-        return { messagesBySession }
-      })
-    }
+    flushBufferKey(get, set, messageId, { streaming: false, field: 'content' })
   },
 
-  appendThinking: (messageId, delta) =>
-    set((s) => {
-      const messagesBySession = { ...s.messagesBySession }
-      for (const [sessionId, messages] of Object.entries(messagesBySession)) {
-        messagesBySession[sessionId] = messages.map((m) =>
-          m.id === messageId ? { ...m, thinking: (m.thinking ?? '') + delta } : m,
-        )
-      }
-      return { messagesBySession }
-    }),
+  appendThinking: (messageId, delta) => {
+    const key = thinkingBufferKey(messageId)
+    set((s) => ({
+      streamingBuffer: {
+        ...s.streamingBuffer,
+        [key]: (s.streamingBuffer[key] ?? '') + delta,
+      },
+    }))
+    scheduleFlush(get, set)
+  },
+
+  flushThinkingBuffer: (messageId) => {
+    flushBufferKey(get, set, thinkingBufferKey(messageId), {
+      streaming: false,
+      field: 'thinking',
+    })
+  },
 
   setRunStatus: (runStatus) => set({ runStatus }),
   setRunId: (runId) => set({ runId }),
+
+  setStage: (kind, toolName) =>
+    set((s) => {
+      const now = Date.now()
+      const history = [...s.stageHistory]
+      if (s.runStage) {
+        history.push({ ...s.runStage, endedAt: now })
+      }
+      return {
+        runStage: { kind, toolName, startedAt: now },
+        stageHistory: history,
+      }
+    }),
+
+  clearStage: () => set({ runStage: null, stageHistory: [] }),
+
   setError: (error) => set({ error }),
   setPendingApproval: (pendingApproval) => set({ pendingApproval }),
   setContextUsage: (contextUsage) => set({ contextUsage }),
@@ -217,6 +324,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       runStatus: 'idle',
       runId: null,
       runSteps: [],
+      runStage: null,
+      stageHistory: [],
       pendingApproval: null,
       error: null,
     }),

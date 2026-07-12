@@ -54,8 +54,10 @@ export async function runAgent(input: {
   sessionId: string
   content: string
   profileId?: string | null
+  /** When true, do not append a new user message (retry after error). */
+  reuseLastUserMessage?: boolean
 }): Promise<void> {
-  const { sessionId, content } = input
+  const { sessionId, content, reuseLastUserMessage } = input
   currentSessionId = sessionId
   const runId = generateId()
   const chat = useChatStore.getState()
@@ -67,17 +69,19 @@ export async function runAgent(input: {
   chat.setError(null)
   chat.clearRunSteps()
 
-  const userMessage = {
-    id: generateId(),
-    sessionId,
-    runId,
-    role: 'user' as const,
-    content,
-    createdAt: new Date().toISOString(),
+  if (!reuseLastUserMessage) {
+    const userMessage = {
+      id: generateId(),
+      sessionId,
+      runId,
+      role: 'user' as const,
+      content,
+      createdAt: new Date().toISOString(),
+    }
+    chat.addMessage(sessionId, userMessage)
   }
-  chat.addMessage(sessionId, userMessage)
 
-  const allMessages = [...(chat.messagesBySession[sessionId] ?? []), userMessage]
+  const allMessages = chat.messagesBySession[sessionId] ?? []
   httpAgent.setMessages(toAguiMessages(allMessages))
   httpAgent.setState(agentState)
 
@@ -95,14 +99,52 @@ export async function runAgent(input: {
     chat.setRunStatus('idle')
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Agent run failed'
-    chat.setError(message)
-    chat.setRunStatus('error')
+    const state = useChatStore.getState()
+    // Clear streaming flags so Thinking/"Analyzing…" cannot stick forever.
+    for (const msgs of Object.values(state.messagesBySession)) {
+      for (const m of msgs) {
+        if (m.streaming) state.flushStreamBuffer(m.id)
+      }
+    }
+    state.setError(message)
+    state.setRunStatus('error')
   }
+}
+
+/** Re-run the last user turn without duplicating the user message. */
+export async function retryLastRun(sessionId: string): Promise<void> {
+  const messages = useChatStore.getState().messagesBySession[sessionId] ?? []
+  const lastUser = [...messages].reverse().find((m) => m.role === 'user')
+  if (!lastUser?.content) {
+    useChatStore.getState().setError(null)
+    useChatStore.getState().setRunStatus('idle')
+    return
+  }
+  await runAgent({
+    sessionId,
+    content: lastUser.content,
+    reuseLastUserMessage: true,
+  })
 }
 
 export function cancelRun(): void {
   if (agent) agent.abortRun()
-  useChatStore.getState().setRunStatus('cancelled')
+  const chat = useChatStore.getState()
+  chat.setRunStatus('cancelled')
+  // Clear stuck tool cards (abort may skip a clean TOOL_CALL_RESULT race).
+  for (const [id, tc] of Object.entries(chat.toolCalls)) {
+    if (
+      tc.status === 'executing' ||
+      tc.status === 'pending' ||
+      tc.status === 'streaming-args'
+    ) {
+      chat.upsertToolCall(id, {
+        status: 'error',
+        result: { error: 'Cancelled' },
+        progress: tc.progress,
+      })
+    }
+  }
 }
 
 export async function respondToApproval(
@@ -141,33 +183,99 @@ export async function saveApprovalConfig(
   return apiClient.put<ApprovalConfig>('/api/approval/config', patch)
 }
 
-export async function loadSessionMessages(sessionId: string): Promise<void> {
-  try {
-    const res = await fetch(`/api/sessions/${sessionId}/messages`, {
-      credentials: 'include',
-    })
-    if (!res.ok) return
-    const messages = (await res.json()) as import('@hermes/shared').Message[]
-    const chat = useChatStore.getState()
-    chat.setMessages(
-      sessionId,
-      messages.map((m) => chat.messageFromDto(m)),
-    )
-  } catch {
-    // REST not available yet
+/**
+ * Hydrate messages from the API without clobbering an in-flight transcript.
+ * Stale empty fetches (StrictMode remount / navigate-during-send) previously
+ * wiped optimistic user + streamed assistant bubbles after the run finished.
+ */
+export async function loadSessionMessages(
+  sessionId: string,
+  opts?: { signal?: AbortSignal },
+): Promise<void> {
+  const res = await fetch(`/api/sessions/${sessionId}/messages`, {
+    credentials: 'include',
+    signal: opts?.signal,
+  })
+  if (opts?.signal?.aborted) return
+  if (!res.ok) {
+    if (res.status === 404) return
+    throw new Error(`Failed to load messages (${res.status})`)
   }
+  const messages = (await res.json()) as import('@hermes/shared').Message[]
+  if (opts?.signal?.aborted) return
+
+  const chat = useChatStore.getState()
+  const existing = chat.messagesBySession[sessionId] ?? []
+  const loaded = messages.map((m) => chat.messageFromDto(m))
+
+  // Empty server snapshot must not erase local optimistic/streamed messages
+  // (navigate + StrictMode remount often fetch before the runtime insert commits).
+  if (loaded.length === 0 && existing.length > 0) return
+
+  chat.setMessages(sessionId, mergeSessionMessages(loaded, existing))
 }
 
-export async function checkLiveRun(sessionId: string): Promise<void> {
+/** Prefer server rows; keep local-only optimistic/streaming rows not yet on the server. */
+function mergeSessionMessages(
+  server: ReturnType<typeof useChatStore.getState>['messagesBySession'][string],
+  local: ReturnType<typeof useChatStore.getState>['messagesBySession'][string],
+): NonNullable<ReturnType<typeof useChatStore.getState>['messagesBySession'][string]> {
+  const serverList = server ?? []
+  const localList = local ?? []
+  if (localList.length === 0) return serverList
+  if (serverList.length === 0) return localList
+
+  const byId = new Map(serverList.map((m) => [m.id, m]))
+  const serverFingerprints = new Set(
+    serverList.map((m) => `${m.role}\0${m.content}`),
+  )
+  for (const m of localList) {
+    if (byId.has(m.id)) continue
+    // Client optimistic user ids differ from server-generated ids — skip dupes by content.
+    if (m.content && serverFingerprints.has(`${m.role}\0${m.content}`)) continue
+    byId.set(m.id, m)
+  }
+  return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+}
+
+export async function checkLiveRun(sessionId: string): Promise<boolean> {
   try {
     const res = await fetch(`/api/sessions/${sessionId}/live`, { credentials: 'include' })
-    if (!res.ok) return
-    const data = (await res.json()) as { live: boolean; runId?: string }
+    if (!res.ok) return false
+    const data = (await res.json()) as { live: boolean; runId?: string | null }
     if (data.live && data.runId) {
+      currentSessionId = sessionId
+      getAgent(sessionId)
       useChatStore.getState().setRunId(data.runId)
       useChatStore.getState().setRunStatus('running')
+      return true
     }
   } catch {
     // endpoint not available
+  }
+  return false
+}
+
+/** While a recovered run is live, refresh messages until the run ends. */
+export function startLiveMessagePoll(sessionId: string): () => void {
+  let stopped = false
+  const tick = async () => {
+    if (stopped) return
+    try {
+      await loadSessionMessages(sessionId)
+      const stillLive = await checkLiveRun(sessionId)
+      if (!stillLive) {
+        useChatStore.getState().setRunStatus('idle')
+        stopped = true
+        return
+      }
+    } catch {
+      /* ignore transient poll errors */
+    }
+    if (!stopped) window.setTimeout(() => void tick(), 1500)
+  }
+  void tick()
+  return () => {
+    stopped = true
   }
 }

@@ -1,5 +1,7 @@
 # ADR-005: Custom A2UI renderer (catalog mapped to Primer)
 
+**Author:** Dinesh Reddy Meka
+
 ## Status
 
 Accepted

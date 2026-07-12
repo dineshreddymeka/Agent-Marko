@@ -1,6 +1,9 @@
 # Dependency licenses
 
-Hermes UI uses **permissive licenses only** (MIT, Apache-2.0, PostgreSQL, ISC, BSD). No GPL, AGPL, SSPL, or BSL.
+**Author:** Dinesh Reddy Meka  
+**Product:** Open Jarvis
+
+Open Jarvis uses **permissive licenses only** (MIT, Apache-2.0, PostgreSQL, ISC, BSD). No GPL, AGPL, SSPL, or BSL.
 
 ## Direct dependencies (runtime)
 
@@ -17,6 +20,10 @@ Hermes UI uses **permissive licenses only** (MIT, Apache-2.0, PostgreSQL, ISC, B
 | cmdk | MIT |
 | react-markdown | MIT |
 | remark-gfm | MIT |
+| remark-math | MIT |
+| rehype-katex | MIT |
+| katex | MIT |
+| mermaid | MIT |
 | shiki | MIT |
 | fast-json-patch | MIT |
 | clsx | MIT |
@@ -33,7 +40,7 @@ Hermes UI uses **permissive licenses only** (MIT, Apache-2.0, PostgreSQL, ISC, B
 
 | Component | License |
 |-----------|---------|
-| PostgreSQL 17 | PostgreSQL License |
+| PostgreSQL 18 | PostgreSQL License |
 | pgvector | PostgreSQL License |
 
 Audit command: `bun pm ls` — re-run before each release and update this file if dependencies change.

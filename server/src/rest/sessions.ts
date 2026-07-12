@@ -1,12 +1,16 @@
-import { jsonResponse, parseJson, readBody } from './helpers'
-import { requireDatabaseOrResponse, withDatabase } from './db-guard'
+import { jsonResponse, parseJson } from './helpers'
+import { requireDatabaseOrResponse } from './db-guard'
 
 export async function handleSessions(req: Request, path: string): Promise<Response | null> {
   const { sessionsRepo } = await import('../db/repositories/sessions')
   const parts = path.split('/').filter(Boolean)
 
   if (req.method === 'GET' && parts.length === 2) {
-    const sessions = await withDatabase(() => sessionsRepo.list(), [])
+    // Do not fall back to [] — that made the UI look like sessions were wiped
+    // whenever the pool was exhausted / DB briefly unavailable.
+    const unavailable = await requireDatabaseOrResponse()
+    if (unavailable) return unavailable
+    const sessions = await sessionsRepo.list()
     return jsonResponse(sessions)
   }
 
@@ -15,6 +19,13 @@ export async function handleSessions(req: Request, path: string): Promise<Respon
     if (unavailable) return unavailable
     const body = await parseJson(req)
     const session = await sessionsRepo.create(body ?? {})
+    void import('../indexer/service')
+      .then(({ queueRuntimeRecord }) => queueRuntimeRecord('session', session.id, { sessionId: session.id }))
+      .catch((err) => {
+        void import('../log').then(({ logger }) =>
+          logger.warn('Failed to queue session index upsert', { id: session.id, error: String(err) }),
+        )
+      })
     return jsonResponse(session, 201)
   }
 
@@ -29,10 +40,26 @@ export async function handleSessions(req: Request, path: string): Promise<Respon
       const body = await parseJson(req)
       const session = await sessionsRepo.update(id, body ?? {})
       if (!session) return jsonResponse({ error: 'Not found' }, 404)
+      void import('../indexer/service')
+        .then(({ queueRuntimeRecord }) => queueRuntimeRecord('session', session.id, { sessionId: session.id }))
+        .catch((err) => {
+          void import('../log').then(({ logger }) =>
+            logger.warn('Failed to queue session index upsert', { id: session.id, error: String(err) }),
+          )
+        })
       return jsonResponse(session)
     }
     if (req.method === 'DELETE') {
       const ok = await sessionsRepo.delete(id)
+      if (ok) {
+        void import('../indexer/service')
+          .then(({ queueRuntimeDelete }) => queueRuntimeDelete('session', id))
+          .catch((err) => {
+            void import('../log').then(({ logger }) =>
+              logger.warn('Failed to queue session index delete', { id, error: String(err) }),
+            )
+          })
+      }
       return jsonResponse({ deleted: ok })
     }
   }

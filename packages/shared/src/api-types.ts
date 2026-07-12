@@ -1,5 +1,7 @@
 /** REST API DTOs shared between app and server (Phase 2+) */
 
+import type { CronWorkflow } from './cron-workflow'
+
 export interface Session {
   id: string
   title: string
@@ -29,15 +31,44 @@ export interface Message {
 export interface Skill {
   id: string
   name: string
+  /** Stable kebab-case identity used for disk folders + sync upsert. */
+  slug: string
   description: string
   bodyMd: string
   source: 'builtin' | 'user-folder' | `git:${string}` | 'learned'
   path: string | null
+  /** SHA-256 of bodyMd; used to skip re-embed when unchanged. */
+  contentHash: string | null
   triggers: string[] | null
+  enabled: boolean
+  lastSyncedAt: string | null
+  /** True when the DB row exists but the SKILL.md path is gone. */
+  missingOnDisk: boolean
   usageCount: number
   successCount: number
   createdAt: string
   updatedAt: string
+}
+
+/** Response from POST /api/skills/sync */
+export interface SkillsSyncResult {
+  synced: number
+  created: number
+  updated: number
+  unchanged: number
+  missing: number
+  recreated: number
+  lastSyncedAt: string
+  git?: Array<{ url: string; synced: number }>
+}
+
+/** Lightweight panel meta (last sync + skills dir). */
+export interface SkillsMeta {
+  lastSyncedAt: string | null
+  skillsDir: string
+  total: number
+  enabled: number
+  missing: number
 }
 
 export interface MemoryEntry {
@@ -59,6 +90,14 @@ export interface CronJob {
   enabled: boolean
   lastRun: string | null
   nextRun: string | null
+  /** IANA timezone for schedule semantics (default UTC). */
+  timezone: string
+  /** Enterprise workflow config (wizard answers + bindings), zod-validated. */
+  workflow: CronWorkflow
+  /** Denormalized from workflow for fast array-contains filters. */
+  mcpServerIds: string[]
+  skillIds: string[]
+  updatedAt: string | null
 }
 
 export interface Profile {
@@ -70,4 +109,590 @@ export interface Profile {
   provider: 'native' | 'agui-remote' | 'hermes-python'
   providerConfig: Record<string, unknown> | null
   settings: Record<string, unknown> | null
+}
+
+export interface McpDiscoveredTool {
+  name: string
+  description?: string
+}
+
+export interface McpDiscoveredResource {
+  uri: string
+  name?: string
+  description?: string
+  mimeType?: string
+}
+
+export interface McpDiscoveredPrompt {
+  name: string
+  description?: string
+}
+
+export interface McpServer {
+  id: string
+  name: string
+  description: string | null
+  transport: 'stdio' | 'http'
+  command: string | null
+  url: string | null
+  env: Record<string, string> | null
+  headers: Record<string, string> | null
+  enabled: boolean
+  toolWhitelist: string[] | null
+  /** When transport=http, try SSE before/instead of streamable-http preference. */
+  httpPreferSse: boolean
+  timeoutMs: number | null
+  autoReconnect: boolean
+  lastStatus: 'connected' | 'disconnected' | 'error' | 'reconnecting' | null
+  lastError: string | null
+  lastConnectedAt: string | null
+  lastTestedAt: string | null
+  discoveredTools: McpDiscoveredTool[] | null
+  discoveredResources: McpDiscoveredResource[] | null
+  discoveredPrompts: McpDiscoveredPrompt[] | null
+  metadata: Record<string, unknown> | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface McpConnectionEvent {
+  id: string
+  serverId: string
+  eventType: string
+  status: string | null
+  transportKind: string | null
+  detail: Record<string, unknown> | null
+  createdAt: string
+}
+
+export interface ApiToken {
+  id: string
+  name: string
+  /** Present only on create */
+  token?: string
+  scopes: string[]
+  lastUsedAt: string | null
+  createdAt: string
+}
+
+export interface SearchResult {
+  kind:
+    | 'message'
+    | 'memory'
+    | 'skill'
+    | 'session'
+    | 'workspace_file'
+    | 'cron_job'
+    | 'run_event'
+    | 'cowork_task'
+    | 'office_artifact'
+  id: string
+  snippet: string
+  score?: number
+  sessionId?: string
+  runId?: string | null
+  userId?: string | null
+  actionId?: string | null
+  documentId?: string
+  chunkId?: string
+  path?: string | null
+  title?: string | null
+  lineStart?: number | null
+  lineEnd?: number | null
+  sourceType?: string
+}
+
+/** @deprecated Prefer SearchResult */
+export type SearchHit = SearchResult
+
+export interface CronRun {
+  id: string
+  jobId: string
+  startedAt: string
+  finishedAt: string | null
+  status: string
+  sessionId: string | null
+  error: string | null
+  /** Per-run snapshot: { mcpAllowed, skillsForced, attempts, errorCode } */
+  detail: Record<string, unknown> | null
+}
+
+export interface WorkspaceEntry {
+  name: string
+  type: 'file' | 'dir'
+  path: string
+}
+
+export interface WorkspaceTreeResponse {
+  path: string
+  entries: WorkspaceEntry[]
+}
+
+export interface WorkspaceGitStatus {
+  isRepo: boolean
+  dirty: boolean
+  files: string[]
+}
+
+/** Open Cowork work-request lifecycle (business UI: Queued / Running / Done / Failed). */
+export type CoworkTaskStatus = 'queued' | 'running' | 'done' | 'failed' | 'aborted'
+
+/** Deliverable chips for document-oriented Cowork jobs. */
+export type CoworkDeliverableType =
+  | 'presentation'
+  | 'word'
+  | 'spreadsheet'
+  | 'pdf'
+  | 'other'
+
+export interface CreateCoworkTaskBody {
+  goal: string
+  deliverableType: CoworkDeliverableType
+  /** Workspace-relative or absolute paths (path-jailed server-side). */
+  files?: Array<string | { sourcePath: string; name?: string }>
+  /** Override OPEN_COWORK_AUTO_APPROVE for this run. */
+  autoApprove?: boolean
+}
+
+export interface CoworkTask {
+  taskId: string
+  status: CoworkTaskStatus
+  goal: string | null
+  deliverableType: CoworkDeliverableType | null
+  /** Hermes audit session (`Cowork: <taskId>`). */
+  sessionId: string | null
+  /**
+   * Source paths submitted with the request (from COWORK_STARTED).
+   * Distinct from output `files`. Null for legacy tasks that predate persistence.
+   */
+  inputFiles: string[] | null
+  /** Workspace-relative outbox paths when available. */
+  files: string[]
+  summary: string | null
+  error: string | null
+  createdAt: string
+  finishedAt: string | null
+}
+
+export interface CreateCoworkTaskResponse {
+  taskId: string
+  status: CoworkTaskStatus
+  sessionId: string | null
+}
+
+export interface CoworkTaskListResponse {
+  tasks: CoworkTask[]
+}
+
+export interface CoworkTaskDetail extends CoworkTask {
+  /** Parsed outbox/<taskId>/status.json when present. */
+  statusJson: Record<string, unknown> | null
+  /** Filenames under outbox/<taskId>/ (excluding status.json when listed separately). */
+  outboxFiles: string[]
+}
+
+export interface AbortCoworkTaskResponse {
+  ok: boolean
+  taskId: string
+  status: CoworkTaskStatus
+  error?: string
+}
+
+/** GET /api/cowork/setup — whether Open Cowork.exe is configured and present. */
+export interface CoworkSetupResponse {
+  configured: boolean
+  exe: string
+  exeExists: boolean
+  /** False for released 3.3.x GUI installers without --headless JSONL. */
+  headlessSupported: boolean
+  workspace: string
+  hint: string
+  /** Official releases page. */
+  releasesUrl: string
+  /** Direct Windows installer download (latest pinned). */
+  downloadUrl: string
+  /** Present when the executable is missing or lacks headless. */
+  code?: 'COWORK_EXE_MISSING' | 'COWORK_HEADLESS_UNSUPPORTED'
+}
+
+/** PUT /api/cowork/setup — persist exe/workspace overrides (settings > env). */
+export interface UpdateCoworkSetupBody {
+  /** Full path to Open Cowork.exe; empty string clears the settings override. */
+  exe?: string
+  workspace?: string
+}
+
+/** GET /api/health — public; LLM baseUrl is only on authenticated debug health. */
+export interface HealthResponse {
+  ok: boolean
+  version: string
+  db: boolean
+  llm: {
+    mode: 'mock' | 'live'
+    mock: boolean
+    model: string | null
+  }
+  /** better-auth social provider ids when configured (no secrets). */
+  oauthProviders: string[]
+}
+
+/** Generic error body returned by most REST handlers. */
+export interface ApiError {
+  error: string
+  code?: string
+  message?: string
+  detail?: unknown
+  details?: unknown
+}
+
+export interface DeletedResponse {
+  deleted: boolean
+}
+
+export interface OkResponse {
+  ok: boolean
+}
+
+/** GET/PUT /api/approval/config */
+export interface ApprovalConfig {
+  autoApproveAll: boolean
+  toolWhitelist: string[]
+  sessionWhitelist: string[]
+}
+
+export interface UpdateApprovalConfigBody {
+  autoApproveAll?: boolean
+  toolWhitelist?: string[]
+}
+
+export type ApprovalDecision = 'approve' | 'reject' | 'always' | 'always_tool'
+
+/** POST /api/approval/resolve */
+export interface ResolveApprovalBody {
+  toolCallId: string
+  decision: ApprovalDecision
+}
+
+export interface ResolveApprovalResponse {
+  ok: true
+}
+
+/** GET /api/skills/sources */
+export interface SkillsSourcesResponse {
+  sources: string[]
+}
+
+export interface AddSkillSourceBody {
+  url: string
+}
+
+/** POST /api/cron/validate */
+export interface CronValidateResponse {
+  valid: boolean
+  preview: string
+  nextRun: string | null
+}
+
+/** POST /api/cron/wizard/preview */
+export interface CronWizardPreviewResponse {
+  schedule: CronValidateResponse | null
+  mcpServers: Array<{
+    id: string
+    name: string
+    enabled: boolean
+    lastStatus: string | null
+    lastError: string | null
+    healthy: boolean
+  }>
+  unknownMcpIds: string[]
+  skills: Array<{ id: string; name: string }>
+  unknownSkillIds: string[]
+}
+
+/** GET/PUT /api/workspace/file */
+export interface WorkspaceFileResponse {
+  path: string
+  content: string | null
+  encoding: 'utf8' | 'base64'
+  mime: string
+  contentBase64?: string
+}
+
+export interface WorkspaceFileWriteBody {
+  path: string
+  content?: string
+  contentBase64?: string
+  encoding?: 'utf8' | 'base64'
+}
+
+export interface WorkspaceFileWriteResponse {
+  ok: true
+  path: string
+}
+
+/** POST /api/workspace/upload */
+export interface WorkspaceUploadBody {
+  path: string
+  content?: string
+  contentBase64?: string
+  encoding?: 'utf8' | 'base64'
+}
+
+export interface WorkspaceUploadResponse {
+  ok: true
+  path: string
+  name: string
+}
+
+/** Settings map (sensitive values masked on read). */
+export type SettingsMap = Record<string, unknown>
+
+/** GET /api/settings/export */
+export interface SettingsExportResponse {
+  exportedAt: string
+  product: string
+  sessions: Session[]
+  memory: MemoryEntry[]
+  skills: Skill[]
+  profiles: Profile[]
+  settings: SettingsMap
+}
+
+/** GET /api/office/config */
+export interface OfficeConfigResponse {
+  configured: boolean
+  missingEnv: string[]
+  redirectUri: string
+  tenantId: string
+  autoSso: boolean
+  azurePlatform: 'Web'
+  flow: 'authorization_code+pkce'
+  purpose: string
+  scopes: string[]
+}
+
+export interface OfficeAccount {
+  id: string | null
+  displayName: string | null
+  email: string | null
+  connectedAt: string
+  expiresAt: string | null
+  scopes: string[]
+}
+
+/** GET /api/office/status */
+export interface OfficeStatusResponse extends OfficeConfigResponse {
+  connected: boolean
+  account: OfficeAccount | null
+  artifactScopes: string[]
+  grantedScopes: string[]
+}
+
+export interface OfficeConnectBody {
+  returnTo?: string
+  prompt?: 'consent' | 'select_account'
+  artifacts?: boolean | '1'
+}
+
+export interface OfficeConnectResponse {
+  authUrl: string
+}
+
+export interface OfficeDisconnectResponse {
+  connected: false
+}
+
+export interface BriefingMeeting {
+  id: string
+  title: string
+  start: string
+  end: string
+  timeLabel: string
+  status: 'Done' | 'In progress' | 'Upcoming' | 'Cancelled'
+  meta: string
+  isOnlineMeeting: boolean
+  joinUrl: string | null
+  attendeeCount: number
+  durationMinutes: number
+}
+
+export interface OfficeBriefingStats {
+  meetingTime: string
+  meetingTimeMinutes: number
+  meetingCount: number
+  onlineMeetingCount: number
+  focusBlocks: number
+  upcomingCount: number
+  doneCount: number
+}
+
+/** GET /api/office/briefing — live or empty placeholder. */
+export interface OfficeBriefingResponse {
+  live: boolean
+  syncedAt?: string
+  connected: boolean
+  configured?: boolean
+  account: unknown
+  stats: OfficeBriefingStats | null
+  agenda: BriefingMeeting[]
+  insights: string[]
+  actions: string[]
+  note?: string
+  message?: string
+  error?: string
+}
+
+/** GET /api/indexer/status */
+export interface IndexerStatusResponse {
+  queueDepth: number
+  retryingJobs: number
+  failedJobs: number
+  indexedDocuments: number
+  indexedChunks: number
+  lastIndexedAt: string | null
+}
+
+export interface IndexerReindexResponse {
+  queued: number
+}
+
+export interface IndexerDrainResponse {
+  processed: number
+}
+
+/** GET /api/debug/health — requires session/bearer (or localhost bypass). */
+export interface DebugHealthResponse {
+  status: 'ok' | 'degraded'
+  product: string
+  database: string
+  db: boolean
+  dbMetrics: Record<string, unknown> | null
+  activeRuns: number
+  mcp: Record<string, unknown>
+  embeddingQueue: number
+  compute: Record<string, unknown>
+  cronJobs: number
+  oauthProviders: string[]
+  microsoftSso: {
+    configured: boolean
+    missingEnv: string[]
+    autoSso: boolean
+  }
+  llm: {
+    baseUrl: string
+    mode: 'mock' | 'live'
+    mock: boolean
+  }
+  memory: Record<string, unknown>
+  uptime: number
+}
+
+export interface DebugRunSummary {
+  runId: string
+  sessionId?: string | null
+  eventCount?: number
+  lastEventAt?: string | null
+  [key: string]: unknown
+}
+
+export interface DebugRunsResponse {
+  runs: DebugRunSummary[]
+  source: 'postgres' | 'memory'
+}
+
+export interface RunEvent {
+  id: string
+  runId: string
+  sessionId: string | null
+  seq: number
+  eventType: string
+  payload: Record<string, unknown>
+  createdAt: string
+}
+
+export interface DebugRunEventsResponse {
+  runId: string
+  events: RunEvent[]
+  source: 'postgres' | 'memory'
+}
+
+export interface SessionLiveResponse {
+  live: boolean
+  runId: string | null
+}
+
+export interface SearchResponse {
+  query: string
+  results: SearchResult[]
+}
+
+export interface McpListResponse {
+  servers: McpServer[]
+  states: Record<string, unknown>
+}
+
+export interface ApiTokenListResponse {
+  tokens: ApiToken[]
+}
+
+/** DB-backed index document (recall / indexer). */
+export interface JarvisIndexDocument {
+  id: string
+  sourceType: string
+  sourceId: string
+  path: string | null
+  title: string | null
+  contentHash: string | null
+  mimeType: string | null
+  sizeBytes: number | null
+  mtime: string | null
+  sessionId: string | null
+  runId: string | null
+  userId: string | null
+  actionId: string | null
+  tags: unknown
+  metadata: Record<string, unknown>
+  deletedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface JarvisIndexChunk {
+  id: string
+  documentId: string
+  chunkIndex: number
+  content: string
+  tokenEstimate: number
+  lineStart: number | null
+  lineEnd: number | null
+  metadata: Record<string, unknown>
+  createdAt: string
+}
+
+export interface IndexJob {
+  id: string
+  sourceType: string
+  sourceId: string
+  operation: string
+  actionId: string | null
+  sessionId: string | null
+  runId: string | null
+  userId: string | null
+  metadata: Record<string, unknown>
+  priority: number
+  status: string
+  attempts: number
+  lastError: string | null
+  lockedAt: string | null
+  nextAttemptAt: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SettingRow {
+  key: string
+  value: unknown
+  sessionId: string | null
+  createdAt: string
+  updatedAt: string
 }

@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { getDb } from '../client'
+import { nowTimestamp } from '../insert-contract'
 import { settings } from '../schema'
 
 export const settingsRepo = {
@@ -15,12 +16,26 @@ export const settingsRepo = {
     return Object.fromEntries(rows.map((r) => [r.key, r.value]))
   },
 
-  async set(key: string, value: unknown): Promise<void> {
+  async set(key: string, value: unknown, opts?: { sessionId?: string | null }): Promise<void> {
     const db = getDb()
+    const now = nowTimestamp()
     await db
       .insert(settings)
-      .values({ key, value })
-      .onConflictDoUpdate({ target: settings.key, set: { value } })
+      .values({
+        key,
+        value,
+        sessionId: opts?.sessionId ?? null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: settings.key,
+        set: {
+          value,
+          updatedAt: now,
+          ...(opts?.sessionId !== undefined ? { sessionId: opts.sessionId } : {}),
+        },
+      })
   },
 
   async delete(key: string): Promise<boolean> {

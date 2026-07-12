@@ -12,14 +12,39 @@ export async function handleDebug(req: Request, path: string): Promise<Response 
     const { activeCronCount } = await import('../cron/scheduler')
 
     const dbOk = await pingDatabase()
+    const { getDbMetrics } = await import('../db/client')
+    const dbMetrics = dbOk ? await getDbMetrics() : null
+    const { oauthProvidersConfigured } = await import('../auth')
+    const { config } = await import('../config')
+    const { getLlmDebugInfo } = await import('../health')
+    const microsoftConfigured = Boolean(
+      config.MICROSOFT_CLIENT_ID?.trim() && config.MICROSOFT_CLIENT_SECRET?.trim(),
+    )
+    const microsoftMissingEnv = [
+      !config.MICROSOFT_CLIENT_ID?.trim() ? 'MICROSOFT_CLIENT_ID' : null,
+      !config.MICROSOFT_CLIENT_SECRET?.trim() ? 'MICROSOFT_CLIENT_SECRET' : null,
+    ].filter(Boolean)
     return jsonResponse({
       status: dbOk ? 'ok' : 'degraded',
+      product: 'Open Jarvis',
       database: dbOk ? 'connected' : 'unreachable',
+      db: dbOk,
+      dbMetrics,
       activeRuns: listActiveRuns().length,
       mcp: getConnectionStates(),
       embeddingQueue: queueDepth(),
+      jarvisIndexer: await import('../db/repositories/indexer')
+        .then(({ indexerRepo }) => indexerRepo.status())
+        .catch(() => null),
       compute: getComputePoolStatus(),
       cronJobs: activeCronCount(),
+      oauthProviders: oauthProvidersConfigured(),
+      microsoftSso: {
+        configured: microsoftConfigured,
+        missingEnv: microsoftMissingEnv,
+        autoSso: config.MICROSOFT_SSO_AUTO,
+      },
+      llm: getLlmDebugInfo(),
       memory: process.memoryUsage(),
       uptime: process.uptime(),
     })

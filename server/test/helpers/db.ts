@@ -25,14 +25,21 @@ export async function truncateAppTables(): Promise<void> {
   const sql = getSql()
   await sql.unsafe(`
     TRUNCATE TABLE
+      jarvis_index_action_links,
+      jarvis_index_actions,
+      jarvis_index_chunks,
+      jarvis_index_documents,
+      index_jobs,
       run_events,
       messages,
       memory,
       skills,
+      mcp_connection_events,
       mcp_servers,
       cron_runs,
       cron_jobs,
       settings,
+      api_tokens,
       sessions
     RESTART IDENTITY CASCADE
   `)

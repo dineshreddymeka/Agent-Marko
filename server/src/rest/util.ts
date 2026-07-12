@@ -9,22 +9,23 @@ export async function readJson<T = unknown>(req: Request): Promise<T> {
   return (await req.json()) as T
 }
 
+import { resolveCorsOrigin } from '../security/cors'
+
 export function withCors(req: Request, res?: Response): Response | null {
-  const origin = req.headers.get('Origin') ?? '*'
+  const origin = resolveCorsOrigin(req)
+  const cors: Record<string, string> = {
+    'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  }
+  if (origin) {
+    cors['Access-Control-Allow-Origin'] = origin
+    if (origin !== '*') cors['Access-Control-Allow-Credentials'] = 'true'
+  }
   if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        'Access-Control-Allow-Origin': origin,
-        'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Allow-Credentials': 'true',
-      },
-    })
+    return new Response(null, { status: 204, headers: cors })
   }
   if (!res) return null
   const headers = new Headers(res.headers)
-  headers.set('Access-Control-Allow-Origin', origin)
-  headers.set('Access-Control-Allow-Credentials', 'true')
+  for (const [k, v] of Object.entries(cors)) headers.set(k, v)
   return new Response(res.body, { status: res.status, headers })
 }

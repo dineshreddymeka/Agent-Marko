@@ -1,8 +1,9 @@
 import { RunAgentInputSchema, type BaseEvent } from '@ag-ui/core'
 import { resolveProvider } from '../agent/provider'
+import { sessionsRepo } from '../db/repositories/sessions'
 import { runEventsRepo } from '../db/repositories/run_events'
 import { isHermesError } from '../errors'
-import { logger } from '../log'
+import { isDebugChannel, logger } from '../log'
 import { isDatabaseAvailable } from '../rest/db-guard'
 import { bufferRunEvent } from './run-event-buffer'
 import { encodeAguiComment, encodeAguiEvent } from './encoder'
@@ -47,15 +48,37 @@ export async function handleAguiRequest(req: Request): Promise<Response> {
   const input = parsed.data
   const run = registerRun(input)
   const log = logger.child({ threadId: input.threadId, runId: input.runId })
+  const messageCount = Array.isArray(input.messages) ? input.messages.length : 0
+  log.info('AG-UI run accepted', {
+    messageCount,
+    tools: Array.isArray(input.tools) ? input.tools.length : 0,
+  })
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const encoder = new TextEncoder()
       const write = (chunk: string) => controller.enqueue(encoder.encode(chunk))
+      const started = performance.now()
+      let eventCount = 0
+      const eventTypes = new Map<string, number>()
 
       write(encodeAguiComment('connected'))
 
+      // Ensure session row exists before any run_events insert (FK run_events_session_fk).
+      if (await isDatabaseAvailable()) {
+        try {
+          await sessionsRepo.ensure(input.threadId)
+        } catch (err) {
+          log.warn('Failed to ensure session before run events', { error: String(err) })
+        }
+      }
+
       const sseEmit: EventEmitter = createEventRecorder((event) => {
+        eventCount += 1
+        eventTypes.set(event.type, (eventTypes.get(event.type) ?? 0) + 1)
+        if (isDebugChannel('agui')) {
+          log.debug('AG-UI event', { eventType: event.type, seq: eventCount })
+        }
         write(encodeAguiEvent(event))
       }, (event) => {
         void recordEvent(input.runId, input.threadId, event)
@@ -64,15 +87,29 @@ export async function handleAguiRequest(req: Request): Promise<Response> {
       try {
         emitRunStarted(input, sseEmit as EventEmitter)
         const provider = await resolveProvider(input)
+        log.info('AG-UI provider resolved', { provider: provider.id })
         await provider.run(input, sseEmit, run.controller.signal)
         emitRunFinished(input, sseEmit as EventEmitter)
+        log.info('AG-UI run finished', {
+          durationMs: Math.round(performance.now() - started),
+          eventCount,
+          eventTypes: Object.fromEntries(eventTypes),
+        })
       } catch (err) {
         if (run.controller.signal.aborted) {
-          log.info('Run aborted')
+          log.info('Run aborted', {
+            durationMs: Math.round(performance.now() - started),
+            eventCount,
+          })
         } else {
           const message = isHermesError(err) ? err.message : String(err)
           const code = isHermesError(err) ? err.code : 'PROVIDER_ERROR'
-          log.error('Run failed', { error: message, code })
+          log.error('Run failed', {
+            error: err,
+            code,
+            durationMs: Math.round(performance.now() - started),
+            eventCount,
+          })
           emitRunError(input, sseEmit as EventEmitter, message, code)
         }
       } finally {
@@ -81,6 +118,7 @@ export async function handleAguiRequest(req: Request): Promise<Response> {
       }
     },
     cancel() {
+      log.info('AG-UI client cancelled stream')
       cancelRun(input.runId)
     },
   })

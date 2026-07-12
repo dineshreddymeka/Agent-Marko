@@ -39,8 +39,15 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   if (!res.ok) {
     let message = res.statusText
     try {
-      const body = (await res.json()) as { message?: string; code?: string }
-      message = body.message ?? message
+      const body = (await res.json()) as {
+        message?: string
+        error?: string
+        code?: string
+      }
+      message =
+        body.message ??
+        (typeof body.error === 'string' ? body.error : undefined) ??
+        message
       throw new ApiError(message, res.status, body.code)
     } catch (e) {
       if (e instanceof ApiError) throw e

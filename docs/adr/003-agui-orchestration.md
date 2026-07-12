@@ -1,5 +1,7 @@
 # ADR-003: AG-UI orchestration server (not framework-specific backend)
 
+**Author:** Dinesh Reddy Meka
+
 ## Status
 
 Accepted

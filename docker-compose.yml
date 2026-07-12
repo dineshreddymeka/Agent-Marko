@@ -1,18 +1,46 @@
 services:
   postgres:
-    # pgvector/pgvector:0.8.5-pg17 — Artifactory-verified (pin digest when available)
+    # Open Jarvis: Postgres 17 + pgvector 0.8.5 (user mandate — PG17 only)
+    # Author: Dinesh Reddy Meka
     image: pgvector/pgvector:0.8.5-pg17
     ports:
       - '5433:5432'
+    shm_size: 256mb
     environment:
+      # Bootstrap superuser for init/migrations/admin. App runtime should use
+      # non-superuser hermes_app (scripts/db-create-app-role.ts) so reserved
+      # superuser connection slots stay free when pools are busy.
       POSTGRES_USER: hermes
       POSTGRES_PASSWORD: hermes
       POSTGRES_DB: hermes
+    # Desktop ultra tuning (see docker/postgres/postgresql.ultra.conf + ADR-002)
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - effective_cache_size=1GB
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - max_connections=50
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_size=512MB
+      - -c
+      - log_min_duration_statement=500
     volumes:
+      # PG17 traditional data mount
       - ${HERMES_DATA_DIR:-C:/hermes-data}/postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U hermes']
+      test: ['CMD-SHELL', 'pg_isready -U hermes -d hermes']
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 20s
     restart: unless-stopped
