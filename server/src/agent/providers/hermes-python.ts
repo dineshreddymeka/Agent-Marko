@@ -16,7 +16,11 @@ export const hermesPythonProvider: AgentProvider = {
 
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+        ...(config.HERMES_PYTHON_AUTH ? { Authorization: config.HERMES_PYTHON_AUTH } : {}),
+      },
       body: JSON.stringify({
         session_id: input.threadId,
         run_id: input.runId,

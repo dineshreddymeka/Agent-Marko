@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": "node .cursor/hooks/plan-tracker.mjs --edit",
+        "timeout": 15
+      }
+    ],
+    "stop": [
+      {
+        "command": "node .cursor/hooks/plan-tracker.mjs --stop",
+        "timeout": 30,
+        "loop_limit": 1
+      }
+    ],
+    "subagentStop": [
+      {
+        "command": "node .cursor/hooks/plan-tracker.mjs --stop",
+        "timeout": 30,
+        "loop_limit": 1
+      }
+    ]
+  }
+}

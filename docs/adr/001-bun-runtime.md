@@ -1,12 +1,14 @@
 # ADR-001: Bun as universal runtime
 
+**Author:** Dinesh Reddy Meka
+
 ## Status
 
 Accepted
 
 ## Context
 
-Hermes UI needs a fast dev loop on Windows, native Postgres access, and a single language across frontend tooling and backend.
+Open Jarvis needs a fast dev loop on Windows, native Postgres access, and a single language across frontend tooling and backend.
 
 ## Decision
 

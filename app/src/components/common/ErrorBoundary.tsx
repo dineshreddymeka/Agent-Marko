@@ -23,9 +23,16 @@ export class ErrorBoundary extends Component<Props, State> {
     const settings = useSettingsStore.getState()
     const diagnostics = {
       version: '0.1.0',
+      product: 'Open Jarvis',
       theme: settings.theme,
       model: settings.model,
-      recentEvents: chat.recentEvents,
+      recentEvents: chat.recentEvents.slice(-50),
+      storeSnapshot: {
+        runStatus: chat.runStatus,
+        runId: chat.runId,
+        contextUsage: chat.contextUsage,
+        messageSessions: Object.keys(chat.messagesBySession),
+      },
       error: this.state.error?.message,
       stack: this.state.error?.stack,
       timestamp: new Date().toISOString(),

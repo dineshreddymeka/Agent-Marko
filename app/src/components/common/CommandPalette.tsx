@@ -4,17 +4,23 @@ import { useNavigate } from '@tanstack/react-router'
 import { useUiStore, type PanelName } from '@app/stores/ui'
 import { useSettingsStore } from '@app/stores/settings'
 import { useSessionsStore } from '@app/stores/sessions'
-import { generateId } from '@app/lib/utils'
+import { createPersistedSession } from '@app/lib/sessions-api'
+import { apiClient } from '@app/lib/api'
+import { panelLabel } from '@app/lib/labels'
 import { Kbd } from '@app/components/common/Kbd'
+import type { Session } from '@hermes/shared'
 
 const panels: { id: PanelName; label: string }[] = [
-  { id: 'sessions', label: 'Sessions' },
-  { id: 'workspace', label: 'Workspace' },
-  { id: 'skills', label: 'Skills' },
-  { id: 'memory', label: 'Memory' },
-  { id: 'cron', label: 'Cron' },
-  { id: 'profiles', label: 'Profiles' },
-  { id: 'settings', label: 'Settings' },
+  { id: 'workspace', label: panelLabel('workspace') },
+  { id: 'office', label: panelLabel('office') },
+  { id: 'cron', label: panelLabel('cron') },
+  { id: 'connections', label: panelLabel('connections') },
+  { id: 'skills', label: panelLabel('skills') },
+  { id: 'settings', label: panelLabel('settings') },
+  { id: 'sessions', label: panelLabel('sessions') },
+  { id: 'memory', label: panelLabel('memory') },
+  { id: 'briefing', label: panelLabel('briefing') },
+  { id: 'profiles', label: panelLabel('profiles') },
 ]
 
 export function CommandPalette() {
@@ -23,41 +29,65 @@ export function CommandPalette() {
   const setActivePanel = useUiStore((s) => s.setActivePanel)
   const setTheme = useSettingsStore((s) => s.setTheme)
   const addSession = useSessionsStore((s) => s.addSession)
+  const setActiveSessionId = useSessionsStore((s) => s.setActiveSessionId)
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
+
+  const newSession = async (profileId: string | null = null) => {
+    setOpen(false)
+    try {
+      let session: Session
+      if (profileId) {
+        session = await apiClient.post<Session>('/api/sessions', {
+          title: 'New chat (profile)',
+          profileId,
+        })
+        addSession(session)
+        setActiveSessionId(session.id)
+      } else {
+        session = await createPersistedSession('New chat')
+      }
+      void navigate({ to: '/session/$id', params: { id: session.id } })
+    } catch {
+      useUiStore.getState().addToast({
+        title: 'Could not create session',
+        variant: 'danger',
+      })
+    }
+  }
 
   useEffect(() => {
     if (!open) setQuery('')
   }, [open])
 
-  const newSession = () => {
-    const id = generateId()
-    addSession({
-      id,
-      title: 'New chat',
-      groupName: null,
-      profileId: null,
-      pinned: false,
-      archived: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    })
-    setOpen(false)
-    void navigate({ to: '/session/$id', params: { id } })
-  }
+  useEffect(() => {
+    const onNew = () => {
+      void newSession(null)
+    }
+    window.addEventListener('open-jarvis:new-session', onNew)
+    return () => window.removeEventListener('open-jarvis:new-session', onNew)
+  }, [])
 
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-[15vh]">
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-[15vh]"
+      role="dialog"
+      aria-label="Command palette"
+      data-testid="command-palette"
+    >
       <Command
         className="w-full max-w-lg overflow-hidden rounded-lg border border-border bg-canvas-subtle shadow-2xl"
         shouldFilter
+        label="Command palette"
       >
         <Command.Input
           value={query}
           onValueChange={setQuery}
           placeholder="Type a command or search…"
+          data-testid="command-palette-input"
+          autoFocus
           className="w-full border-b border-border bg-transparent px-4 py-3 text-sm text-fg outline-none placeholder:text-fg-muted"
         />
         <Command.List className="max-h-80 overflow-y-auto p-2">
@@ -67,10 +97,20 @@ export function CommandPalette() {
 
           <Command.Group heading="Actions" className="text-xs text-fg-muted">
             <Command.Item
-              onSelect={newSession}
+              onSelect={() => void newSession(null)}
               className="cursor-pointer rounded-md px-2 py-1.5 text-sm text-fg aria-selected:bg-accent-muted"
             >
               New session
+            </Command.Item>
+            <Command.Item
+              onSelect={() => {
+                setOpen(false)
+                setActivePanel('profiles')
+                void navigate({ to: '/panel/$name', params: { name: 'profiles' } })
+              }}
+              className="cursor-pointer rounded-md px-2 py-1.5 text-sm text-fg aria-selected:bg-accent-muted"
+            >
+              New session with profile…
             </Command.Item>
           </Command.Group>
 
@@ -105,21 +145,30 @@ export function CommandPalette() {
             ))}
           </Command.Group>
 
-          <Command.Group heading="Help" className="text-xs text-fg-muted">
-            <Command.Item
-              disabled
-              className="rounded-md px-2 py-1.5 text-sm text-fg-muted"
-            >
+          <Command.Group heading="Keyboard shortcuts" className="text-xs text-fg-muted">
+            <Command.Item disabled className="rounded-md px-2 py-1.5 text-sm text-fg-muted">
+              <span className="flex items-center gap-2">
+                Command palette <Kbd>Ctrl</Kbd>+<Kbd>K</Kbd>
+              </span>
+            </Command.Item>
+            <Command.Item disabled className="rounded-md px-2 py-1.5 text-sm text-fg-muted">
+              <span className="flex items-center gap-2">
+                New session <Kbd>Ctrl</Kbd>+<Kbd>N</Kbd>
+              </span>
+            </Command.Item>
+            <Command.Item disabled className="rounded-md px-2 py-1.5 text-sm text-fg-muted">
               <span className="flex items-center gap-2">
                 Toggle sidebar <Kbd>Ctrl</Kbd>+<Kbd>B</Kbd>
               </span>
             </Command.Item>
-            <Command.Item
-              disabled
-              className="rounded-md px-2 py-1.5 text-sm text-fg-muted"
-            >
+            <Command.Item disabled className="rounded-md px-2 py-1.5 text-sm text-fg-muted">
               <span className="flex items-center gap-2">
                 Toggle right panel <Kbd>Ctrl</Kbd>+<Kbd>Alt</Kbd>+<Kbd>B</Kbd>
+              </span>
+            </Command.Item>
+            <Command.Item disabled className="rounded-md px-2 py-1.5 text-sm text-fg-muted">
+              <span className="flex items-center gap-2">
+                Cancel run / close <Kbd>Esc</Kbd>
               </span>
             </Command.Item>
           </Command.Group>

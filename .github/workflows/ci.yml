@@ -6,9 +6,15 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # Unit + offline verifiers (no Docker). Windows PATH helpers are unused on ubuntu.
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -40,8 +46,10 @@ jobs:
       - name: Playwright smoke
         run: bun run test:e2e
 
+  # Postgres 17 + pgvector: migrate + repository integration tests
   postgres:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: pgvector/pgvector:0.8.5-pg17

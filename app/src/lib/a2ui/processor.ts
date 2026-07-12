@@ -78,16 +78,5 @@ export function processA2UIMessage(payload: unknown, sessionId: string | null): 
   notify()
 }
 
-export function sendA2UIAction(surfaceId: string, action: string, data: unknown): void {
-  void fetch('/agui', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({
-      type: 'actionResponse',
-      surfaceId,
-      action,
-      data,
-    }),
-  })
-}
+/** @deprecated use sendA2UIAction from `@app/lib/a2ui/actions` */
+export { sendA2UIAction } from './actions'

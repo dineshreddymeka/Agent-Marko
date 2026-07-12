@@ -7,6 +7,9 @@ export const HermesCustomEvents = {
   TITLE: 'hermes.title',
   A2UI_MESSAGE: 'a2ui.message',
   APPROVAL_REQUIRED: 'hermes.approval.required',
+  TOOL_ERROR: 'hermes.tool.error',
+  /** Live Open Cowork JSONL progress streamed during `delegate_to_cowork`. */
+  COWORK_PROGRESS: 'hermes.cowork.progress',
 } as const
 
 export type HermesCustomEventName =
@@ -16,6 +19,8 @@ export type HermesCustomEventName =
   | typeof HermesCustomEvents.TITLE
   | typeof HermesCustomEvents.A2UI_MESSAGE
   | typeof HermesCustomEvents.APPROVAL_REQUIRED
+  | typeof HermesCustomEvents.TOOL_ERROR
+  | typeof HermesCustomEvents.COWORK_PROGRESS
 
 export interface HermesContextPayload {
   promptTokens?: number
@@ -47,12 +52,25 @@ export interface HermesApprovalRequiredPayload {
   args: Record<string, unknown>
 }
 
+/** Open Cowork → Jarvis chat progress (stdio JSONL mirrored into AG-UI). */
+export interface HermesCoworkProgressPayload {
+  taskId: string
+  coworkSessionId?: string | null
+  phase: 'started' | 'delta' | 'tool' | 'ended' | 'error'
+  text?: string
+  tool?: string
+  toolInput?: unknown
+  toolOutput?: string
+  ok?: boolean
+}
+
 export type HermesCustomPayload =
   | HermesContextPayload
   | HermesTitlePayload
   | HermesCronFiredPayload
   | HermesSkillLearnedPayload
   | HermesApprovalRequiredPayload
+  | HermesCoworkProgressPayload
   | Record<string, unknown>
 
 export interface HermesCustomEvent {

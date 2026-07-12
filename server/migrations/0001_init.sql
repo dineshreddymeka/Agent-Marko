@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
-  system_prompt TEXT NOT NULL DEFAULT 'You are Hermes, a helpful AI assistant.',
+  system_prompt TEXT NOT NULL DEFAULT 'You are Open Jarvis, a helpful AI assistant.',
   model TEXT NOT NULL DEFAULT 'gpt-4o-mini',
   temperature REAL NOT NULL DEFAULT 0.7,
   provider TEXT NOT NULL DEFAULT 'native',
@@ -138,5 +138,5 @@ CREATE INDEX IF NOT EXISTS run_events_run_seq_idx ON run_events (run_id, seq);
 
 -- Default profile
 INSERT INTO profiles (id, name, system_prompt, model, temperature, provider)
-SELECT gen_random_uuid(), 'Default', 'You are Hermes, a helpful AI assistant.', 'gpt-4o-mini', 0.7, 'native'
+SELECT gen_random_uuid(), 'Default', 'You are Open Jarvis, a helpful AI assistant.', 'gpt-4o-mini', 0.7, 'native'
 WHERE NOT EXISTS (SELECT 1 FROM profiles LIMIT 1);

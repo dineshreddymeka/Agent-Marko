@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { MessageBubble } from '@app/components/chat/MessageBubble'
 import type { ChatMessage } from '@app/stores/chat'
+import { useChatStore } from '@app/stores/chat'
 
 interface MessageListProps {
   messages: ChatMessage[]
@@ -9,23 +10,44 @@ interface MessageListProps {
 
 export function MessageList({ messages }: MessageListProps) {
   const parentRef = useRef<HTMLDivElement>(null)
+  const runStatus = useChatStore((s) => s.runStatus)
+  const toolCalls = useChatStore((s) => s.toolCalls)
+
+  // Hide empty assistant placeholders (tool-only turns / empty thinking shells).
+  const visible = messages.filter((m) => {
+    if (m.role === 'user' || m.role === 'system') return true
+    if (m.streaming) return true
+    if (m.content?.trim()) return true
+    if (m.thinking?.trim()) return true
+    if (m.a2ui != null) return true
+    if (m.role === 'tool') {
+      return Object.values(toolCalls).some((tc) => tc.name === m.toolName)
+    }
+    return Object.values(toolCalls).some((tc) => tc.messageId === m.id)
+  })
 
   const virtualizer = useVirtualizer({
-    count: messages.length,
+    count: visible.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 120,
     overscan: 5,
   })
 
+  const lastIndex = visible.length - 1
+
   return (
-    <div ref={parentRef} className="h-full overflow-y-auto px-4 py-4">
+    <div ref={parentRef} className="absolute inset-0 overflow-y-auto px-4 py-4">
       <div
         className="mx-auto max-w-3xl"
         style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}
       >
         {virtualizer.getVirtualItems().map((item) => {
-          const message = messages[item.index]
+          const message = visible[item.index]
           if (!message) return null
+          const animateEnter =
+            item.index === lastIndex &&
+            runStatus === 'running' &&
+            Boolean(message.streaming)
           return (
             <div
               key={message.id}
@@ -39,7 +61,7 @@ export function MessageList({ messages }: MessageListProps) {
                 transform: `translateY(${item.start}px)`,
               }}
             >
-              <MessageBubble message={message} />
+              <MessageBubble message={message} animateEnter={animateEnter} />
             </div>
           )
         })}
