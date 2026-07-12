@@ -361,7 +361,7 @@ describe('CoworkClient', () => {
     lastChild!.stderr.write('fatal oops\n')
     lastChild!.exitWith(1)
 
-    await expectRejected(task, /crashed during task/)
+    await expectRejected(task, /stopped during task/)
   })
 
   test('exited before ready rejects start', async () => {
