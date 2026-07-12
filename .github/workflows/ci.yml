@@ -128,6 +128,7 @@ jobs:
           snyk monitor --all-projects
 
   # Free SonarCloud / SonarQube Cloud (https://sonarcloud.io — Free / OSS plan).
+  # Full monorepo scan (app/server/shared/scripts/migrations/workflows) + coverage + quality gate.
   # 1) Import this GitHub repo at https://sonarcloud.io/projects/create
   # 2) Align sonar.organization + sonar.projectKey in sonar-project.properties
   # 3) Add repo secret SONAR_TOKEN (My Account → Security → Generate Token)
@@ -139,21 +140,38 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+
       - name: Check SONAR_TOKEN
         id: sonar_token
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          if [ -z "$SONAR_TOKEN" ]; then
+          if [ -z "$SNAR_TOKEN" ]; then
             echo "present=false" >> "$GITHUB_OUTPUT"
             echo "::notice::SONAR_TOKEN not set — skipping. Create a free SonarCloud project at https://sonarcloud.io and add the token as repo secret SONAR_TOKEN."
           else
             echo "present=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: SonarCloud Scan
+      - name: Install dependencies
+        if: steps.sonar_token.outputs.present == 'true'
+        run: bun install
+
+      - name: Unit tests with LCOV coverage
+        if: steps.sonar_token.outputs.present == 'true'
+        run: bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage app server packages/shared
+
+      - name: SonarCloud Scan (full project, quality gate enforced)
         if: steps.sonar_token.outputs.present == 'true'
         uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: >
+            -Dsonar.qualitygate.wait=true
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+            -Dsonar.verbose=false
