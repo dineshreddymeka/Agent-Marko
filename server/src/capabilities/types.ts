@@ -39,11 +39,24 @@ export type CapabilitySlashCommand = {
   description: string
 }
 
+export type CapabilityProviderStatus = 'available' | 'unavailable' | 'misconfigured'
+
+/** Delegation targets exposed for `delegate_to_agent` / routing contracts. */
+export type CapabilityProvider = {
+  id: 'native' | 'agui-remote' | 'hermes-python'
+  label: string
+  available: boolean
+  status: CapabilityProviderStatus
+  reason: string | null
+  delegatable: boolean
+}
+
 export type CapabilityManifest = {
   tools: CapabilityTool[]
   skills: CapabilitySkill[]
   plugins: CapabilityPlugin[]
   slashCommands: CapabilitySlashCommand[]
+  providers: CapabilityProvider[]
   refreshedAt: string
   retrievalMode: 'semantic' | 'lexical' | 'legacy'
   routing: RoutingMode

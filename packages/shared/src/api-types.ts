@@ -424,6 +424,17 @@ export interface CapabilitySlashCommandEntry {
   description: string
 }
 
+export type CapabilityProviderStatus = 'available' | 'unavailable' | 'misconfigured'
+
+export interface CapabilityProviderEntry {
+  id: 'native' | 'agui-remote' | 'hermes-python'
+  label: string
+  available: boolean
+  status: CapabilityProviderStatus
+  reason: string | null
+  delegatable: boolean
+}
+
 export type AgentLlmCircuitState = 'closed' | 'open' | 'half_open'
 
 export interface AgentLlmHealthSnapshot {
@@ -454,6 +465,8 @@ export interface CapabilitiesResponse {
     trusted: boolean
   }>
   slashCommands: CapabilitySlashCommandEntry[]
+  /** Provider delegation targets for `delegate_to_agent`. */
+  providers: CapabilityProviderEntry[]
   refreshedAt: string
   retrievalMode: 'semantic' | 'lexical' | 'legacy'
   routing: 'legacy' | 'capabilities'
@@ -468,6 +481,7 @@ export interface CapabilitiesRefreshResponse {
   skills: number
   plugins: number
   slashCommands: number
+  providers: number
   agentLlm: AgentLlmHealthSnapshot
   mcpReconnect?: {
     ok: boolean

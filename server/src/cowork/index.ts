@@ -68,12 +68,23 @@ export type {
 
 export {
   bridgeEntriesFromEvents,
+  clearJarvisMcpBridgeRateWindowForTests,
+  BRIDGE_PROGRESS_RATE_MAX,
+  BRIDGE_PROGRESS_VOLUME_MAX,
+  BridgeContractError,
   COWORK_PROGRESS_EVENT,
   COWORK_QUESTION_EVENT,
   createJarvisMcpBridgeServer,
+  getLastJarvisMcpBridgeActivityAt,
   handleAsk,
   handleFetchContext,
   handleReportProgress,
+  isSensitiveBridgeKey,
+  JARVIS_MCP_BRIDGE_TOOLS,
+  JARVIS_MCP_PERSISTED_EVENTS,
+  jarvisBridgeScriptExists,
+  redactBridgeContextContent,
+  resetJarvisMcpBridgeGuardrailsForTests,
   startJarvisMcpBridge,
 } from './mcp-bridge'
 export type {
@@ -98,5 +109,6 @@ export {
 export type {
   CoworkMcpConfig,
   CoworkMcpServerEntry,
+  JarvisMcpBridgeReadiness,
   JarvisMcpBridgeStatus,
 } from './mcp-register'

@@ -195,6 +195,9 @@ describe('handleCowork REST', () => {
     expect(body.mcpBridge!.command).toContain('mcp-bridge-main.ts')
     expect(typeof body.mcpBridge!.configPath).toBe('string')
     expect(typeof body.mcpBridge!.hint).toBe('string')
+    expect(['not_configured', 'configured', 'connected', 'degraded']).toContain(
+      (body.mcpBridge as { readiness?: string }).readiness,
+    )
     if (!body.exeExists) {
       expect(body.configured).toBe(false)
       expect(body.code).toBe('COWORK_EXE_MISSING')

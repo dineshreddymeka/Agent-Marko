@@ -89,6 +89,14 @@ export const coworkPaths = {
               type: 'object',
               properties: {
                 registered: { type: 'boolean' },
+                readiness: {
+                  type: 'string',
+                  enum: ['not_configured', 'configured', 'connected', 'degraded'],
+                },
+                entryPresent: { type: 'boolean' },
+                enabled: { type: 'boolean' },
+                scriptExists: { type: 'boolean' },
+                lastActivityAt: { type: ['string', 'null'], format: 'date-time' },
                 command: { type: 'string' },
                 configPath: { type: 'string' },
                 hint: { type: 'string' },

@@ -32,6 +32,7 @@ describe('capabilities REST staging gates', () => {
     const body = (await res!.json()) as {
       tools: unknown[]
       slashCommands: unknown[]
+      providers: Array<{ id: string; available: boolean; status: string }>
       routing: string
       agentLlm: {
         degraded: boolean
@@ -42,16 +43,19 @@ describe('capabilities REST staging gates', () => {
     }
     expect(Array.isArray(body.tools)).toBe(true)
     expect(Array.isArray(body.slashCommands)).toBe(true)
+    expect(Array.isArray(body.providers)).toBe(true)
+    expect(body.providers.length).toBeGreaterThanOrEqual(1)
+    expect(body.providers.some((p) => p.id === 'native')).toBe(true)
     expect(body.agentLlm).toBeTruthy()
     expect(typeof body.agentLlm.degraded).toBe('boolean')
     expect(body.agentLlm.toolsEnabled).toBe(!body.agentLlm.degraded)
     expect(body.agentLlm.timeoutMs).toBeGreaterThan(0)
   })
 
-  test('POST /api/capabilities/warm returns mcpReconnect + agentLlm + slashCommands', async () => {
+  test('POST /api/capabilities refresh returns slashCommands + agentLlm counts', async () => {
     const res = await handleCapabilities(
-      new Request('http://127.0.0.1/api/capabilities/warm', { method: 'POST' }),
-      '/api/capabilities/warm',
+      new Request('http://127.0.0.1/api/capabilities', { method: 'POST' }),
+      '/api/capabilities',
     )
     expect(res).not.toBeNull()
     expect(res!.status).toBe(200)
@@ -61,15 +65,15 @@ describe('capabilities REST staging gates', () => {
       skills: number
       plugins: number
       slashCommands: number
-      mcpReconnect: { ok: boolean; error: string | null }
+      providers: number
       agentLlm: { degraded: boolean; toolsEnabled: boolean }
       refreshedAt: string
     }
     expect(body.ok).toBe(true)
     expect(typeof body.tools).toBe('number')
     expect(typeof body.slashCommands).toBe('number')
-    expect(body.mcpReconnect).toBeTruthy()
-    expect(typeof body.mcpReconnect.ok).toBe('boolean')
+    expect(typeof body.providers).toBe('number')
+    expect(body.providers).toBeGreaterThanOrEqual(1)
     expect(body.agentLlm).toBeTruthy()
     expect(typeof body.agentLlm.degraded).toBe('boolean')
     expect(body.agentLlm.toolsEnabled).toBe(!body.agentLlm.degraded)

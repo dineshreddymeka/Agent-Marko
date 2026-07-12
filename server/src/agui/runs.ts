@@ -6,21 +6,94 @@ export type ActiveRun = {
   threadId: string
   controller: AbortController
   startedAt: Date
+  /** Parent run id when this is a nested `delegate_to_agent` sub-run. */
+  parentRunId?: string | null
+  /** Provider id for delegated nested runs. */
+  provider?: string | null
+  kind?: 'root' | 'delegated'
+}
+
+export type DelegationRecord = {
+  parentRunId: string
+  nestedRunId: string
+  provider: string
+  threadId: string
+  startedAt: string
+  finishedAt: string | null
+  status: 'running' | 'finished' | 'error'
+  error: string | null
 }
 
 const activeRuns = new Map<string, ActiveRun>()
+const MAX_RECENT_DELEGATIONS = 50
+const recentDelegations: DelegationRecord[] = []
 
-export function registerRun(input: RunAgentInput): ActiveRun {
+export function registerRun(
+  input: RunAgentInput,
+  opts?: { parentRunId?: string | null; provider?: string | null; kind?: ActiveRun['kind'] },
+): ActiveRun {
   const controller = new AbortController()
   const run: ActiveRun = {
     runId: input.runId,
     threadId: input.threadId,
     controller,
     startedAt: new Date(),
+    parentRunId: opts?.parentRunId ?? null,
+    provider: opts?.provider ?? null,
+    kind: opts?.kind ?? (opts?.parentRunId ? 'delegated' : 'root'),
   }
   activeRuns.set(input.runId, run)
-  logger.debug('Run registered', { runId: input.runId, threadId: input.threadId })
+  logger.debug('Run registered', {
+    runId: input.runId,
+    threadId: input.threadId,
+    parentRunId: run.parentRunId,
+    kind: run.kind,
+  })
   return run
+}
+
+export function beginDelegation(input: {
+  parentRunId: string
+  nestedRunId: string
+  provider: string
+  threadId: string
+}): DelegationRecord {
+  const record: DelegationRecord = {
+    parentRunId: input.parentRunId,
+    nestedRunId: input.nestedRunId,
+    provider: input.provider,
+    threadId: input.threadId,
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    status: 'running',
+    error: null,
+  }
+  recentDelegations.unshift(record)
+  if (recentDelegations.length > MAX_RECENT_DELEGATIONS) {
+    recentDelegations.length = MAX_RECENT_DELEGATIONS
+  }
+  return record
+}
+
+export function finishDelegation(
+  nestedRunId: string,
+  status: 'finished' | 'error',
+  error?: string | null,
+): DelegationRecord | null {
+  const record = recentDelegations.find((d) => d.nestedRunId === nestedRunId)
+  if (!record) return null
+  record.status = status
+  record.finishedAt = new Date().toISOString()
+  record.error = error ?? null
+  return record
+}
+
+export function listRecentDelegations(limit = 20): DelegationRecord[] {
+  return recentDelegations.slice(0, Math.min(Math.max(limit, 1), MAX_RECENT_DELEGATIONS))
+}
+
+export function resetDelegationsForTests(): void {
+  recentDelegations.length = 0
 }
 
 export function getRun(runId: string): ActiveRun | undefined {

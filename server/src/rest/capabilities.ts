@@ -29,6 +29,7 @@ export async function handleCapabilities(req: Request, path: string): Promise<Re
         skills: manifest.skills.length,
         plugins: manifest.plugins.length,
         slashCommands: manifest.slashCommands.length,
+        providers: manifest.providers.length,
         agentLlm: getAgentLlmHealthSnapshot(),
       })
     }
@@ -47,8 +48,20 @@ export async function handleCapabilities(req: Request, path: string): Promise<Re
     try {
       const { connectAll } = await import('../mcp/manager')
       const { refreshMcpToolBridge } = await import('../mcp/tool-bridge')
-      await connectAll()
-      await refreshMcpToolBridge()
+      // Bound reconnect so staging/ops warm never hangs indefinitely (stdio MCP can stall).
+      const warmMcpMs = Math.min(
+        Math.max(Number(process.env.HERMES_CAPABILITIES_WARM_MCP_MS ?? 15_000) || 15_000, 100),
+        60_000,
+      )
+      await Promise.race([
+        (async () => {
+          await connectAll()
+          await refreshMcpToolBridge()
+        })(),
+        Bun.sleep(warmMcpMs).then(() => {
+          throw new Error(`MCP reconnect timed out after ${warmMcpMs}ms`)
+        }),
+      ])
     } catch (err) {
       mcpReconnectOk = false
       mcpReconnectError = err instanceof Error ? err.message : String(err)
@@ -64,6 +77,7 @@ export async function handleCapabilities(req: Request, path: string): Promise<Re
       skills: manifest.skills.length,
       plugins: manifest.plugins.length,
       slashCommands: manifest.slashCommands.length,
+      providers: manifest.providers.length,
       mcpReconnect: {
         ok: mcpReconnectOk,
         error: mcpReconnectError,

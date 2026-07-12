@@ -15,6 +15,10 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  getLastJarvisMcpBridgeActivityAt,
+  jarvisBridgeScriptExists,
+} from './mcp-bridge'
 
 export const JARVIS_MCP_BRIDGE_ID = 'mcp-jarvis-bridge'
 
@@ -33,8 +37,30 @@ export type CoworkMcpConfig = {
   [key: string]: unknown
 }
 
+/**
+ * Ops-facing readiness for the Jarvis MCP bridge entry.
+ * - not_configured: no mcp-config entry
+ * - configured: enabled entry present (Cowork can spawn the bridge)
+ * - connected: configured + script on disk + recent in-process activity
+ * - degraded: entry present but disabled, or enabled but script missing / config broken
+ */
+export type JarvisMcpBridgeReadiness =
+  | 'not_configured'
+  | 'configured'
+  | 'connected'
+  | 'degraded'
+
 export type JarvisMcpBridgeStatus = {
   registered: boolean
+  readiness: JarvisMcpBridgeReadiness
+  /** Entry exists in mcp-config (may be disabled). */
+  entryPresent: boolean
+  /** Entry is enabled for Cowork to spawn. */
+  enabled: boolean
+  /** Bridge CLI script exists on disk. */
+  scriptExists: boolean
+  /** ISO timestamp of last bridge handler activity in this process, if any. */
+  lastActivityAt: string | null
   /** Full command line Cowork will run (for display / manual setup). */
   command: string
   configPath: string
@@ -139,11 +165,66 @@ export async function registerJarvisMcpBridge(opts?: {
   await mkdir(dirname(configPath), { recursive: true })
   await writeFile(configPath, JSON.stringify({ ...existing, servers }, null, 2) + '\n', 'utf8')
 
-  return {
-    registered: true,
-    command: formatCommand(merged),
+  return buildBridgeStatus({
     configPath,
+    entryPresent: true,
+    enabled: true,
+    scriptPath: merged.args[1] ?? jarvisBridgeScriptPath(),
+    command: formatCommand(merged),
     hint: 'Registered. Restart Open Cowork so it picks up the MCP config.',
+  })
+}
+
+function buildBridgeStatus(opts: {
+  configPath: string
+  entryPresent: boolean
+  enabled: boolean
+  scriptPath: string
+  command: string
+  hint?: string
+  configError?: boolean
+}): JarvisMcpBridgeStatus {
+  const scriptExists = jarvisBridgeScriptExists(opts.scriptPath)
+  const lastActivityAt = getLastJarvisMcpBridgeActivityAt()
+  const registered = opts.entryPresent && opts.enabled
+
+  let readiness: JarvisMcpBridgeReadiness
+  if (opts.configError) {
+    readiness = 'degraded'
+  } else if (!opts.entryPresent) {
+    readiness = 'not_configured'
+  } else if (!opts.enabled || !scriptExists) {
+    readiness = 'degraded'
+  } else if (lastActivityAt) {
+    readiness = 'connected'
+  } else {
+    readiness = 'configured'
+  }
+
+  const hint =
+    opts.hint ??
+    (readiness === 'connected'
+      ? 'Jarvis MCP bridge is registered and has recent activity.'
+      : readiness === 'configured'
+        ? 'Jarvis MCP bridge is registered with Open Cowork. Restart Cowork if it was already running.'
+        : readiness === 'degraded'
+          ? opts.entryPresent && !opts.enabled
+            ? 'Jarvis MCP bridge entry exists but is disabled in mcp-config.json.'
+            : !scriptExists
+              ? 'Jarvis MCP bridge is registered but the bridge script is missing on disk.'
+              : 'Jarvis MCP bridge config is unreadable or incomplete.'
+          : 'Not registered. POST /api/cowork/mcp-bridge/register (with Open Cowork closed), then start Cowork.')
+
+  return {
+    registered,
+    readiness,
+    entryPresent: opts.entryPresent,
+    enabled: opts.enabled,
+    scriptExists,
+    lastActivityAt,
+    command: opts.command,
+    configPath: opts.configPath,
+    hint,
   }
 }
 
@@ -153,20 +234,45 @@ export async function getJarvisMcpBridgeStatus(opts?: {
 }): Promise<JarvisMcpBridgeStatus> {
   const configPath = opts?.configPath ?? coworkMcpConfigPath()
   const expected = buildJarvisBridgeEntry()
-  let registered = false
+  const command = formatCommand(expected)
+
   try {
     const config = await readCoworkMcpConfig(configPath)
     const entry = config ? findBridgeEntry(config) : null
-    registered = Boolean(entry && entry.enabled !== false)
+    if (!entry) {
+      return buildBridgeStatus({
+        configPath,
+        entryPresent: false,
+        enabled: false,
+        scriptPath: expected.args[1] ?? jarvisBridgeScriptPath(),
+        command,
+      })
+    }
+    const enabled = entry.enabled !== false
+    const scriptPath =
+      Array.isArray(entry.args) && typeof entry.args[1] === 'string'
+        ? entry.args[1]
+        : jarvisBridgeScriptPath()
+    return buildBridgeStatus({
+      configPath,
+      entryPresent: true,
+      enabled,
+      scriptPath,
+      command: formatCommand({
+        ...expected,
+        command: typeof entry.command === 'string' ? entry.command : expected.command,
+        args: Array.isArray(entry.args) ? (entry.args as string[]) : expected.args,
+      }),
+    })
   } catch {
-    registered = false // malformed file → treat as not registered
-  }
-  return {
-    registered,
-    command: formatCommand(expected),
-    configPath,
-    hint: registered
-      ? 'Jarvis MCP bridge is registered with Open Cowork.'
-      : 'Not registered. POST /api/cowork/mcp-bridge/register (with Open Cowork closed), then start Cowork.',
+    // Malformed file → degraded when the path exists conceptually as broken config.
+    return buildBridgeStatus({
+      configPath,
+      entryPresent: false,
+      enabled: false,
+      scriptPath: expected.args[1] ?? jarvisBridgeScriptPath(),
+      command,
+      configError: true,
+    })
   }
 }

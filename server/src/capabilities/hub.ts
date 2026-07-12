@@ -9,6 +9,7 @@ import { logger } from '../log'
 import type {
   CapabilityManifest,
   CapabilityPlugin,
+  CapabilityProvider,
   CapabilitySkill,
   CapabilitySlashCommand,
   CapabilityTool,
@@ -85,27 +86,55 @@ async function loadSkills(): Promise<CapabilitySkill[]> {
   }
 }
 
-async function loadCoworkPlugin(): Promise<CapabilityPlugin | null> {
+async function loadCoworkPlugins(): Promise<CapabilityPlugin[]> {
   try {
-    const { getCoworkSetupInfo } = await import('../cowork')
+    const { getCoworkSetupInfo, getJarvisMcpBridgeStatus } = await import('../cowork')
     const info = getCoworkSetupInfo()
-    return {
-      id: 'cowork',
-      kind: 'cowork',
-      name: 'Open Cowork',
-      status: info.configured ? 'configured' : 'not_configured',
-      toolCount: 1,
-      trusted: true,
-    }
+    const bridge = await getJarvisMcpBridgeStatus()
+
+    const coworkStatus = !info.configured
+      ? 'not_configured'
+      : info.exeExists && info.headlessSupported !== false
+        ? 'connected'
+        : 'degraded'
+
+    return [
+      {
+        id: 'cowork',
+        kind: 'cowork',
+        name: 'Open Cowork',
+        status: coworkStatus,
+        toolCount: 1,
+        trusted: true,
+      },
+      {
+        id: 'jarvis-mcp-bridge',
+        kind: 'mcp',
+        name: 'Jarvis MCP Bridge',
+        status: bridge.readiness,
+        toolCount: 3,
+        trusted: true,
+      },
+    ]
   } catch {
-    return {
-      id: 'cowork',
-      kind: 'cowork',
-      name: 'Open Cowork',
-      status: 'unknown',
-      toolCount: 1,
-      trusted: true,
-    }
+    return [
+      {
+        id: 'cowork',
+        kind: 'cowork',
+        name: 'Open Cowork',
+        status: 'unknown',
+        toolCount: 1,
+        trusted: true,
+      },
+      {
+        id: 'jarvis-mcp-bridge',
+        kind: 'mcp',
+        name: 'Jarvis MCP Bridge',
+        status: 'unknown',
+        toolCount: 3,
+        trusted: true,
+      },
+    ]
   }
 }
 
@@ -158,16 +187,30 @@ function buildSlashCommands(): CapabilitySlashCommand[] {
   }))
 }
 
+async function loadProviders(): Promise<CapabilityProvider[]> {
+  try {
+    const { buildProviderCapabilityEntries } = await import('../agent/provider-capabilities')
+    return await buildProviderCapabilityEntries()
+  } catch {
+    return []
+  }
+}
+
 export async function buildCapabilityManifest(): Promise<CapabilityManifest> {
-  const [skills, cowork] = await Promise.all([loadSkills(), loadCoworkPlugin()])
+  const [skills, coworkPlugins, providers] = await Promise.all([
+    loadSkills(),
+    loadCoworkPlugins(),
+    loadProviders(),
+  ])
   const plugins = buildMcpPlugins()
-  if (cowork) plugins.unshift(cowork)
+  plugins.unshift(...coworkPlugins)
 
   const next: CapabilityManifest = {
     tools: buildToolEntries(),
     skills,
     plugins,
     slashCommands: buildSlashCommands(),
+    providers,
     refreshedAt: new Date().toISOString(),
     retrievalMode: config.HERMES_ROUTING === 'legacy' ? 'legacy' : retrievalMode,
     routing: config.HERMES_ROUTING,
@@ -185,6 +228,7 @@ export async function refreshCapabilityManifest(reason = 'manual'): Promise<Capa
         tools: m.tools.length,
         skills: m.skills.length,
         plugins: m.plugins.length,
+        providers: m.providers.length,
       })
       return m
     })

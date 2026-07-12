@@ -20,6 +20,7 @@ export const CORE_TOOL_NAMES = [
   'list_dir',
   'document_form_show',
   'delegate_to_cowork',
+  'delegate_to_agent',
   'a2ui_render',
   'form_request_show',
   'memory_search',
@@ -81,6 +82,16 @@ function strengthenDescriptions(tools: LlmTool[]): LlmTool[] {
           ...t.function,
           description:
             'Delegate PDF/Word/PowerPoint/spreadsheet generation to Open Cowork when the deliverable is clear enough. If audience/length/style are missing, call document_form_show first.',
+        },
+      }
+    }
+    if (name === 'delegate_to_agent') {
+      return {
+        ...t,
+        function: {
+          ...t.function,
+          description:
+            'Delegate a subtask to another agent provider (native, agui-remote, or hermes-python). Only use providers marked available in the capability manifest; unsupported or misconfigured providers return an explicit error.',
         },
       }
     }

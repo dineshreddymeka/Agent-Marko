@@ -12,6 +12,8 @@ export const HermesCustomEvents = {
   COWORK_PROGRESS: 'hermes.cowork.progress',
   /** Agent LLM fell back to chat-only bridge — tools unavailable this turn. */
   CAPABILITIES_DEGRADED: 'hermes.capabilities.degraded',
+  /** Nested `delegate_to_agent` parent↔child run linkage. */
+  DELEGATION: 'hermes.delegation',
 } as const
 
 export type HermesCustomEventName =
@@ -24,6 +26,7 @@ export type HermesCustomEventName =
   | typeof HermesCustomEvents.TOOL_ERROR
   | typeof HermesCustomEvents.COWORK_PROGRESS
   | typeof HermesCustomEvents.CAPABILITIES_DEGRADED
+  | typeof HermesCustomEvents.DELEGATION
 
 export interface HermesContextPayload {
   promptTokens?: number
@@ -75,6 +78,14 @@ export interface HermesCapabilitiesDegradedPayload {
   lastFailure?: string | null
 }
 
+export interface HermesDelegationPayload {
+  phase: 'started' | 'finished' | 'error'
+  parentRunId: string
+  nestedRunId: string
+  provider: string
+  error?: string
+}
+
 export type HermesCustomPayload =
   | HermesContextPayload
   | HermesTitlePayload
@@ -83,6 +94,7 @@ export type HermesCustomPayload =
   | HermesApprovalRequiredPayload
   | HermesCoworkProgressPayload
   | HermesCapabilitiesDegradedPayload
+  | HermesDelegationPayload
   | Record<string, unknown>
 
 export interface HermesCustomEvent {

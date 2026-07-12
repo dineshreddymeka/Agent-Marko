@@ -5,7 +5,6 @@ export async function handleDebug(req: Request, path: string): Promise<Response 
 
   if (req.method === 'GET' && parts.length === 3 && parts[2] === 'health') {
     const { pingDatabase } = await import('../db/client')
-    const { listActiveRuns } = await import('../agui/runs')
     const { getConnectionStates } = await import('../mcp/manager')
     const { queueDepth } = await import('../vector/indexer')
     const { getComputePoolStatus } = await import('../compute/pool')
@@ -18,6 +17,7 @@ export async function handleDebug(req: Request, path: string): Promise<Response 
     const { oauthProvidersConfigured } = await import('../auth')
     const { config } = await import('../config')
     const { getLlmDebugInfo } = await import('../health')
+    const { listActiveRuns, listRecentDelegations } = await import('../agui/runs')
     const microsoftConfigured = Boolean(
       config.MICROSOFT_CLIENT_ID?.trim() && config.MICROSOFT_CLIENT_SECRET?.trim(),
     )
@@ -25,13 +25,23 @@ export async function handleDebug(req: Request, path: string): Promise<Response 
       !config.MICROSOFT_CLIENT_ID?.trim() ? 'MICROSOFT_CLIENT_ID' : null,
       !config.MICROSOFT_CLIENT_SECRET?.trim() ? 'MICROSOFT_CLIENT_SECRET' : null,
     ].filter(Boolean)
+    const active = listActiveRuns()
     return jsonResponse({
       status: dbOk ? 'ok' : 'degraded',
       product: 'Open Jarvis',
       database: dbOk ? 'connected' : 'unreachable',
       db: dbOk,
       dbMetrics,
-      activeRuns: listActiveRuns().length,
+      activeRuns: active.length,
+      activeRunDetails: active.map((r) => ({
+        runId: r.runId,
+        threadId: r.threadId,
+        parentRunId: r.parentRunId ?? null,
+        provider: r.provider ?? null,
+        kind: r.kind ?? 'root',
+        startedAt: r.startedAt.toISOString(),
+      })),
+      recentDelegations: listRecentDelegations(20),
       mcp: getConnectionStates(),
       embeddingQueue: queueDepth(),
       jarvisIndexer: await import('../db/repositories/indexer')
@@ -55,6 +65,8 @@ export async function handleDebug(req: Request, path: string): Promise<Response 
           skillCount: cached?.skills.length ?? 0,
           pluginCount: cached?.plugins.length ?? 0,
           slashCommandCount: cached?.slashCommands.length ?? 0,
+          providerCount: cached?.providers.length ?? 0,
+          providers: cached?.providers ?? [],
           retrievalMode: cached?.retrievalMode ?? null,
           routing: cached?.routing ?? config.HERMES_ROUTING,
           vectorCacheSize: m.getDescriptionVectorCacheSize(),

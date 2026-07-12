@@ -47,6 +47,9 @@ function ManifestNotice({ message }: { message: string }) {
 function PluginsOverview({ plugins }: { plugins: CapabilitiesResponse['plugins'] }) {
   if (plugins.length === 0) return null
 
+  const healthy = (status: string) =>
+    status === 'connected' || status === 'ready' || status === 'configured'
+
   return (
     <div className="flex flex-wrap gap-2">
       {plugins.map((plugin) => (
@@ -57,12 +60,15 @@ function PluginsOverview({ plugins }: { plugins: CapabilitiesResponse['plugins']
         >
           <span
             className={`h-1.5 w-1.5 rounded-full ${
-              plugin.status === 'connected' || plugin.status === 'ready'
+              healthy(plugin.status)
                 ? 'bg-success'
-                : 'bg-attention'
+                : plugin.status === 'degraded'
+                  ? 'bg-attention'
+                  : 'bg-attention'
             }`}
           />
           <span className="font-medium">{plugin.name}</span>
+          <span className="text-fg-muted">{plugin.status}</span>
           <span className="text-fg-muted">
             {plugin.toolCount} tool{plugin.toolCount === 1 ? '' : 's'}
           </span>
@@ -96,6 +102,9 @@ function CoworkSection() {
   }
 
   const ready = setup?.configured && setup.exeExists && setup.headlessSupported !== false
+  const bridge = setup?.mcpBridge
+  const bridgeReady =
+    bridge?.readiness === 'connected' || bridge?.readiness === 'configured'
 
   return (
     <div className="space-y-2 text-sm">
@@ -118,7 +127,27 @@ function CoworkSection() {
           </code>
         ) : null}
       </div>
+      {bridge ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+              bridgeReady
+                ? 'bg-[color-mix(in_srgb,var(--hermes-success)_18%,transparent)] text-success'
+                : 'bg-[color-mix(in_srgb,var(--hermes-attention)_18%,transparent)] text-attention'
+            }`}
+            title={bridge.hint}
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${bridgeReady ? 'bg-success' : 'bg-attention'}`}
+            />
+            MCP bridge: {bridge.readiness.replace(/_/g, ' ')}
+          </span>
+        </div>
+      ) : null}
       {setup?.hint && !ready ? <p className="text-xs text-fg-muted">{setup.hint}</p> : null}
+      {bridge?.hint && !bridgeReady ? (
+        <p className="text-xs text-fg-muted">{bridge.hint}</p>
+      ) : null}
       <Link
         to="/panel/$name"
         params={{ name: 'office' }}
@@ -306,11 +335,13 @@ export function ConnectionsPanel() {
       addToast({
         title: 'Capabilities warmed',
         description: `${mcpNote}; ${routeNote}; ${result.slashCommands} slash command(s).`,
+        variant: 'success',
       })
     } catch (err) {
       addToast({
         title: 'Warm failed',
         description: err instanceof Error ? err.message : 'Could not warm capabilities.',
+        variant: 'danger',
       })
     } finally {
       setWarming(false)

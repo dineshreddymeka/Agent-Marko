@@ -2,7 +2,7 @@
 
 **Author:** Dinesh Reddy Meka  
 **Product:** Open Jarvis  
-**Scope:** Staging readiness for the Capability Hub (routing, degraded telemetry, warm path, slash-sync). Phase 4 provider/Cowork contract work is out of scope here.
+**Scope:** Staging readiness for the Capability Hub (routing, degraded telemetry, warm path, slash-sync) plus Phase 4 release gates (`delegate_to_agent` providers, Cowork MCP bridge, rollback).
 
 ## Staging environment
 
@@ -58,11 +58,37 @@ Unit proof: `bun test app/test/capabilities-staging.test.ts app/test/composer-ph
 
 ## Rollback
 
-Set `HERMES_ROUTING=legacy` and restart the API. Debug health `capabilities.routing` / `agentLlm.routing` should read `legacy`. Full rollback checklist is a later release gate.
+**Trigger:** capability routing regressions (wrong tools offered, runaway tool loops, slash-sync breakage) that are not fixed by `POST /api/capabilities` refresh / warm.
+
+**Steps:**
+
+1. Set `HERMES_ROUTING=legacy` in staging `.env`.
+2. Restart the API process (env is read at boot).
+3. Confirm:
+   - `GET /api/debug/health` → `agentLlm.routing=legacy` and `capabilities.routing=legacy`
+   - `GET /api/capabilities` → `routing=legacy`, `retrievalMode=legacy`
+4. Expect legacy regex tool subsetting (`selectLlmToolsLegacy`) instead of hub retrieval.
+5. To restore hub mode: set `HERMES_ROUTING=capabilities`, restart, re-run healthy/warm gates above.
+
+**Owner response:** on-call staging operator; keep change in `.env` only (no code revert required for routing rollback).
+
+## Phase 4 release checklist
+
+| Gate | Expect | Notes |
+|------|--------|--------|
+| Focused unit tests | All pass | capabilities-health/rest/retrieve, delegate-to-agent, cowork-mcp-bridge/rest, app capabilities-staging + composer-phase4 |
+| Tool-capable path | `agentLlm.degraded=false`, `toolsEnabled=true` | Requires `HERMES_AGENT_LLM_URL` (not chat-only `:3456`) |
+| Degraded fallback | `degraded=true`, AG-UI `hermes.capabilities.degraded` | Proven when agent URL unset / bridge-only |
+| `delegate_to_agent` | Unsupported/unavailable providers rejected; nested parent-child runs recorded | Unit + provider manifest `providers[]` |
+| Cowork MCP bridge | progress + question handlers; `COWORK_PROGRESS` / `COWORK_QUESTION` extraction | Register via `POST /api/cowork/mcp-bridge/register` when Cowork closed |
+| Warm path | `POST /api/capabilities/warm` returns ≤ ~15–20s with `mcpReconnect` | Bound by `HERMES_CAPABILITIES_WARM_MCP_MS` |
+| Rollback | `HERMES_ROUTING=legacy` → health/capabilities show `legacy` | Restart required |
 
 ## Focused tests
 
 ```bash
-bun test server/test/capabilities-health.test.ts server/test/capabilities-rest.test.ts server/test/capabilities-retrieve.test.ts
+bun test server/test/capabilities-health.test.ts server/test/capabilities-rest.test.ts server/test/capabilities-retrieve.test.ts server/test/delegate-to-agent.test.ts server/test/cowork-mcp-bridge.test.ts server/test/cowork-rest.test.ts
 bun test app/test/capabilities-staging.test.ts app/test/composer-phase4.test.ts
 ```
+
+Warm path (`POST /api/capabilities/warm`) is bounded by `HERMES_CAPABILITIES_WARM_MCP_MS` (default 15000). Prefer the curl gate above for live MCP reconnect proof.

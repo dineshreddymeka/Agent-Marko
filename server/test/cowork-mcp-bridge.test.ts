@@ -1,5 +1,5 @@
 /**
- * Jarvis MCP bridge (Slice B) — tool handlers + register helper.
+ * Jarvis MCP bridge — tool handlers, contract guardrails, register helper.
  * No real Cowork.exe or database required (persist: false paths).
  */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
@@ -8,12 +8,23 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   bridgeEntriesFromEvents,
+  BRIDGE_PROGRESS_MESSAGE_MAX,
+  BRIDGE_PROGRESS_RATE_MAX,
+  BRIDGE_PROGRESS_VOLUME_MAX,
+  BridgeContractError,
+  clearJarvisMcpBridgeRateWindowForTests,
   COWORK_PROGRESS_EVENT,
   COWORK_QUESTION_EVENT,
   createJarvisMcpBridgeServer,
+  getLastJarvisMcpBridgeActivityAt,
   handleAsk,
   handleFetchContext,
   handleReportProgress,
+  isSensitiveBridgeKey,
+  JARVIS_MCP_BRIDGE_TOOLS,
+  JARVIS_MCP_PERSISTED_EVENTS,
+  redactBridgeContextContent,
+  resetJarvisMcpBridgeGuardrailsForTests,
 } from '../src/cowork/mcp-bridge'
 import {
   buildJarvisBridgeEntry,
@@ -33,10 +44,12 @@ const temps: string[] = []
 
 beforeEach(() => {
   resetCoworkTaskStateForTests()
+  resetJarvisMcpBridgeGuardrailsForTests()
 })
 
 afterEach(async () => {
   resetCoworkTaskStateForTests()
+  resetJarvisMcpBridgeGuardrailsForTests()
   for (const dir of temps.splice(0)) {
     await rm(dir, { recursive: true, force: true })
   }
@@ -47,6 +60,20 @@ async function makeTempDir(): Promise<string> {
   temps.push(dir)
   return dir
 }
+
+describe('Jarvis MCP bridge contract', () => {
+  test('exposes exactly three tools and two persisted event types', () => {
+    expect([...JARVIS_MCP_BRIDGE_TOOLS]).toEqual([
+      'jarvis_report_progress',
+      'jarvis_ask',
+      'jarvis_fetch_context',
+    ])
+    expect([...JARVIS_MCP_PERSISTED_EVENTS]).toEqual([
+      COWORK_PROGRESS_EVENT,
+      COWORK_QUESTION_EVENT,
+    ])
+  })
+})
 
 describe('jarvis_report_progress handler', () => {
   test('records progress on the task and returns the entry', async () => {
@@ -60,6 +87,7 @@ describe('jarvis_report_progress handler', () => {
     expect(result.entry.message).toBe('Drafting slides')
     expect(result.entry.percent).toBe(40)
     expect(result.persisted).toBe(false)
+    expect(getLastJarvisMcpBridgeActivityAt()).toBeTruthy()
 
     const progress = listCoworkTaskProgress('t-20260712-001')
     expect(progress).toHaveLength(1)
@@ -82,13 +110,50 @@ describe('jarvis_report_progress handler', () => {
     expect(progress[1]!.percent).toBe(100)
   })
 
-  test('rejects missing taskId/message', async () => {
-    expect(handleReportProgress({ taskId: '', message: 'x' }, { persist: false })).rejects.toThrow(
-      'taskId is required',
-    )
-    expect(handleReportProgress({ taskId: 't-1', message: '  ' }, { persist: false })).rejects.toThrow(
-      'message is required',
-    )
+  test('rejects missing taskId/message with BridgeContractError', async () => {
+    await expect(
+      handleReportProgress({ taskId: '', message: 'x' }, { persist: false }),
+    ).rejects.toBeInstanceOf(BridgeContractError)
+    await expect(
+      handleReportProgress({ taskId: 't-1', message: '  ' }, { persist: false }),
+    ).rejects.toThrow('message is required')
+  })
+
+  test('rejects path-unsafe task ids and oversized messages', async () => {
+    await expect(
+      handleReportProgress({ taskId: '../etc/passwd', message: 'x' }, { persist: false }),
+    ).rejects.toThrow(/unsafe path/)
+    await expect(
+      handleReportProgress(
+        { taskId: 't-1', message: 'x'.repeat(BRIDGE_PROGRESS_MESSAGE_MAX + 1) },
+        { persist: false },
+      ),
+    ).rejects.toThrow(/maximum length/)
+  })
+
+  test('enforces progress rate cap per task', async () => {
+    for (let i = 0; i < BRIDGE_PROGRESS_RATE_MAX; i++) {
+      await handleReportProgress(
+        { taskId: 't-rate', message: `tick-${i}` },
+        { persist: false },
+      )
+    }
+    await expect(
+      handleReportProgress({ taskId: 't-rate', message: 'overflow' }, { persist: false }),
+    ).rejects.toMatchObject({ code: 'PROGRESS_RATE_EXCEEDED' })
+  })
+
+  test('enforces progress volume cap per task', async () => {
+    for (let n = 0; n < BRIDGE_PROGRESS_VOLUME_MAX; n++) {
+      if (n > 0 && n % BRIDGE_PROGRESS_RATE_MAX === 0) {
+        clearJarvisMcpBridgeRateWindowForTests()
+      }
+      await handleReportProgress({ taskId: 't-vol', message: `n-${n}` }, { persist: false })
+    }
+    clearJarvisMcpBridgeRateWindowForTests()
+    await expect(
+      handleReportProgress({ taskId: 't-vol', message: 'overflow' }, { persist: false }),
+    ).rejects.toMatchObject({ code: 'PROGRESS_VOLUME_EXCEEDED' })
   })
 })
 
@@ -125,9 +190,29 @@ describe('jarvis_fetch_context handler', () => {
     expect(result.matches).toEqual([])
   })
 
-  test('refuses sensitive settings keys', async () => {
+  test('requires key or query', async () => {
+    const result = await handleFetchContext({})
+    expect(result.ok).toBe(false)
+    expect(result.refused).toBe(true)
+    expect(result.code).toBe('KEY_OR_QUERY_REQUIRED')
+  })
+
+  test('explicitly refuses sensitive settings keys', async () => {
+    expect(isSensitiveBridgeKey('llm.api_key')).toBe(true)
     const result = await handleFetchContext({ key: 'llm.api_key' })
+    expect(result.ok).toBe(false)
+    expect(result.refused).toBe(true)
+    expect(result.code).toBe('SENSITIVE_KEY_REFUSED')
     expect(result.setting).toBeNull()
+  })
+
+  test('redacts secret-shaped memory content', () => {
+    const redacted = redactBridgeContextContent(
+      'token=supersecretvalue and sk-abcdefghijklmnop and Bearer eyJhbGciOiJIUzI1NiJ9.abc',
+    )
+    expect(redacted).not.toContain('supersecretvalue')
+    expect(redacted).not.toContain('sk-abcdefghijklmnop')
+    expect(redacted).toContain('[REDACTED]')
   })
 })
 
@@ -176,6 +261,8 @@ describe('mcp-config.json registration', () => {
 
     const status = await registerJarvisMcpBridge({ configPath })
     expect(status.registered).toBe(true)
+    expect(status.readiness).toBe('configured')
+    expect(status.enabled).toBe(true)
     expect(status.configPath).toBe(configPath)
 
     const config = await readCoworkMcpConfig(configPath)
@@ -228,12 +315,13 @@ describe('mcp-config.json registration', () => {
     expect(await readFile(configPath, 'utf8')).toBe('{ not json') // untouched
   })
 
-  test('status reports registered only when an enabled entry exists', async () => {
+  test('status reports readiness configured when an enabled entry exists', async () => {
     const dir = await makeTempDir()
     const configPath = join(dir, 'mcp-config.json')
 
     const before = await getJarvisMcpBridgeStatus({ configPath })
     expect(before.registered).toBe(false)
+    expect(before.readiness).toBe('not_configured')
     expect(before.command).toContain('mcp-bridge-main.ts')
     expect(before.hint).toContain('register')
 
@@ -241,5 +329,39 @@ describe('mcp-config.json registration', () => {
 
     const after = await getJarvisMcpBridgeStatus({ configPath })
     expect(after.registered).toBe(true)
+    expect(after.readiness).toBe('configured')
+    expect(after.scriptExists).toBe(true)
+  })
+
+  test('status reports degraded when entry exists but is disabled', async () => {
+    const dir = await makeTempDir()
+    const configPath = join(dir, 'mcp-config.json')
+    const entry = { ...buildJarvisBridgeEntry(), enabled: false }
+    await writeFile(
+      configPath,
+      JSON.stringify({ servers: [entry] }, null, 2),
+      'utf8',
+    )
+
+    const status = await getJarvisMcpBridgeStatus({ configPath })
+    expect(status.entryPresent).toBe(true)
+    expect(status.enabled).toBe(false)
+    expect(status.registered).toBe(false)
+    expect(status.readiness).toBe('degraded')
+  })
+
+  test('status reports connected after in-process bridge activity', async () => {
+    const dir = await makeTempDir()
+    const configPath = join(dir, 'mcp-config.json')
+    await registerJarvisMcpBridge({ configPath })
+
+    await handleReportProgress(
+      { taskId: 't-20260712-099', message: 'alive' },
+      { persist: false },
+    )
+
+    const status = await getJarvisMcpBridgeStatus({ configPath })
+    expect(status.readiness).toBe('connected')
+    expect(status.lastActivityAt).toBeTruthy()
   })
 })
