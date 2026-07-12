@@ -118,13 +118,26 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
               </pre>
             </div>
           )}
-          {toolCall.progress && (
+          {((toolCall.progressLines && toolCall.progressLines.length > 0) ||
+            toolCall.progressLive) && (
             <div className="mb-2">
-              <p className="mb-1 text-xs text-fg-muted">Open Cowork</p>
-              <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded-lg border border-border-muted bg-canvas-inset p-2 font-mono text-xs text-fg">
-                {toolCall.progress}
-                {spinning && <span className="streaming-caret" aria-hidden />}
-              </pre>
+              <p className="mb-1 text-xs text-fg-muted">Open Cowork progress</p>
+              <div
+                className="max-h-40 space-y-1 overflow-auto rounded-lg border border-border-muted bg-canvas-inset p-2 font-mono text-xs text-fg"
+                aria-live="polite"
+              >
+                {(toolCall.progressLines ?? []).map((line, i) => (
+                  <p key={`${i}-${line.slice(0, 24)}`} className="whitespace-pre-wrap break-words">
+                    {line}
+                  </p>
+                ))}
+                {toolCall.progressLive ? (
+                  <p className="whitespace-pre-wrap break-words text-fg-muted">
+                    {toolCall.progressLive}
+                    {spinning && <span className="streaming-caret" aria-hidden />}
+                  </p>
+                ) : null}
+              </div>
             </div>
           )}
           {formatted && (

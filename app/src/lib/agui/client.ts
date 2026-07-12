@@ -141,7 +141,8 @@ export function cancelRun(): void {
       chat.upsertToolCall(id, {
         status: 'error',
         result: { error: 'Cancelled' },
-        progress: tc.progress,
+        progressLines: tc.progressLines,
+        progressLive: tc.progressLive,
       })
     }
   }
