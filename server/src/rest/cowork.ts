@@ -10,6 +10,8 @@ import type {
   CoworkTaskDetail,
   CreateCoworkTaskBody,
   CreateCoworkTaskResponse,
+  SendCoworkTaskMessageBody,
+  SendCoworkTaskMessageResponse,
   UpdateCoworkSetupBody,
 } from '@hermes/shared'
 import { resolve } from 'node:path'
@@ -33,6 +35,7 @@ import {
   listCoworkTaskRecords,
   listOutboxFiles,
   readStatusJson,
+  sendCoworkTaskMessage,
   startCoworkTaskAsync,
 } from '../cowork/run-task'
 import type { PackageFileInput } from '../cowork/task'
@@ -413,6 +416,32 @@ export async function handleCowork(req: Request, path: string): Promise<Response
       ...(questions.length > 0 ? { questions } : {}),
     }
     return jsonResponse(detail)
+  }
+
+  // POST /api/cowork/tasks/:taskId/message — follow-up into a live session.
+  if (
+    req.method === 'POST' &&
+    parts.length === 5 &&
+    parts[2] === 'tasks' &&
+    parts[4] === 'message'
+  ) {
+    const taskId = parts[3]!
+    const body =
+      (await parseJson<SendCoworkTaskMessageBody>(req)) ??
+      ({} as SendCoworkTaskMessageBody)
+    const text = String(body.text ?? '').trim()
+    if (!text) return jsonResponse({ error: 'text is required' }, 400)
+
+    const result = sendCoworkTaskMessage(taskId, text)
+    const payload: SendCoworkTaskMessageResponse = {
+      ok: result.ok,
+      taskId,
+      ...(result.ok ? {} : { error: result.error }),
+    }
+    if (!result.ok) {
+      return jsonResponse(payload, result.code === 'not_live' ? 404 : 409)
+    }
+    return jsonResponse(payload)
   }
 
   // POST /api/cowork/tasks/:taskId/abort

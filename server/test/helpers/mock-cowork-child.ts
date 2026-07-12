@@ -41,6 +41,11 @@ export type MockCoworkChildBehavior = {
    * spawn `--cwd` (simulates Cowork outbox deliverable).
    */
   writeStatusForTaskId?: string
+  /**
+   * When set, on `session.message` write `outbox/<taskId>/status.json` and emit
+   * another `session.end` (simulates the corrective status.json retry).
+   */
+  onMessageWriteStatusForTaskId?: string
   /** Optional text deltas to emit (default one short line). */
   textDeltas?: string[]
 }
@@ -126,10 +131,7 @@ function createMockChild(
     queueMicrotask(() => ee.emit('exit', code, signal))
   }
 
-  const writeStatusIfRequested = () => {
-    const behavior = getBehavior()
-    const taskId = behavior.writeStatusForTaskId
-    if (!taskId) return
+  const writeStatusFor = (taskId: string) => {
     const cwd = extractCwd(spawnArgs)
     if (!cwd) return
     const outDir = path.join(cwd, 'outbox', taskId)
@@ -146,6 +148,11 @@ function createMockChild(
       }),
       'utf8',
     )
+  }
+
+  const writeStatusIfRequested = () => {
+    const taskId = getBehavior().writeStatusForTaskId
+    if (taskId) writeStatusFor(taskId)
   }
 
   const completeSession = (sessionId: string) => {
@@ -212,6 +219,11 @@ function createMockChild(
           sessionId: sid,
           text: String(cmd.text ?? ''),
         })
+        const behavior = getBehavior()
+        if (behavior.onMessageWriteStatusForTaskId) {
+          writeStatusFor(behavior.onMessageWriteStatusForTaskId)
+          ee.emitLine({ type: 'session.end', sessionId: sid, result: 'ok' })
+        }
       }
     }
   }
