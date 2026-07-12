@@ -10,7 +10,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@ag-ui/core": "^0.0.39",
+    "@ag-ui/core": "^0.0.57",
     "@hermes/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "better-auth": "^1.2.8",
