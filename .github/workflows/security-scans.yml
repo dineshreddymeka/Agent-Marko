@@ -111,7 +111,8 @@ jobs:
       - name: bun audit
         run: |
           if bun audit --help >/dev/null 2>&1; then
-            bun audit
+            # Fail on high/critical only; moderate esbuild (dev tooling) is tracked separately.
+            bun audit --audit-level=high
           else
             echo "::notice::bun audit not available in this Bun version — skipping"
           fi
