@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-import { readdir, readFile } from 'node:fs/promises'
-import { join } from 'node:path'
-=======
 /**
  * SKILL.md loader — folder/git sync into Postgres + embedding queue.
  * Author: Dinesh Reddy Meka
@@ -15,7 +11,6 @@ import { join } from 'node:path'
 import { access, mkdir, readdir, readFile, rm, unlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { createHash } from 'node:crypto'
->>>>>>> origin/main
 import { config } from '../config'
 import { isPathInsideRoot } from '../fs/path-jail'
 import { skillsRepo } from '../db/repositories/skills'

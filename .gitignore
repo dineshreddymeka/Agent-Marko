@@ -16,9 +16,7 @@ workspace/
 test-results/
 playwright-report/
 *.tsbuildinfo
-<<<<<<< HEAD
 coverage
-=======
 
 # Local-only / never ship (Cursor SDK, bridges, ad-hoc inspect)
 # Root-level only — do not ignore server/src/agent/tools/
@@ -31,4 +29,3 @@ scripts/_inspect-hermes-sqlite.ts
 scripts/_inspect-*.ts
 **/@cursor/
 **/*cursor*sdk*
->>>>>>> origin/main

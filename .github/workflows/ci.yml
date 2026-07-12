@@ -6,14 +6,12 @@ on:
   pull_request:
     branches: [main]
 
-<<<<<<< HEAD
 permissions:
   contents: read
-=======
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
->>>>>>> origin/main
 
 jobs:
   # Unit + offline verifiers (no Docker). Windows PATH helpers are unused on ubuntu.

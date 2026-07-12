@@ -1,10 +1,7 @@
 import { Cron } from 'croner'
 import { randomUUID } from 'node:crypto'
-<<<<<<< HEAD
-=======
 import { EventType, type BaseEvent } from '@ag-ui/core'
 import { HermesCustomEvents } from '@hermes/shared'
->>>>>>> origin/main
 import { cronRepo } from '../db/repositories/cron'
 import { sessionsRepo } from '../db/repositories/sessions'
 import { runEventsRepo } from '../db/repositories/run_events'

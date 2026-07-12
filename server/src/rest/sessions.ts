@@ -1,9 +1,5 @@
 import { jsonResponse, parseJson } from './helpers'
-<<<<<<< HEAD
-import { requireDatabaseOrResponse, withDatabase } from './db-guard'
-=======
 import { requireDatabaseOrResponse } from './db-guard'
->>>>>>> origin/main
 
 export async function handleSessions(req: Request, path: string): Promise<Response | null> {
   const { sessionsRepo } = await import('../db/repositories/sessions')

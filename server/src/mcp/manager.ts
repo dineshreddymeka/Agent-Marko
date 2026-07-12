@@ -155,7 +155,7 @@ async function connectWithTransport(
   clearReconnect(server.id)
   attachTransportWatchers(server, transport)
 
-  const client = new Client({ name: 'open-jarvis', version: '0.1.0' })
+  const client = new Client({ name: 'open-jarvis', version: '0.2.0' })
   await client.connect(transport)
   clients.set(server.id, client)
   serverConfigs.set(server.id, server)
@@ -181,29 +181,10 @@ async function connectWithTransport(
 
   const resources: string[] = []
   try {
-<<<<<<< HEAD
-    if (server.transport === 'stdio') {
-      if (!server.command) throw new Error('stdio transport requires command')
-      const parts = server.command.split(/\s+/)
-      const command = parts[0]!
-      const args = parts.slice(1)
-      const transport = new StdioClientTransport({
-        command,
-        args,
-        env: { ...process.env, ...(server.env ?? {}) },
-      })
-      const client = new Client({ name: 'hermes-ui', version: '0.2.0' })
-      await client.connect(transport)
-      clients.set(server.id, client)
-      const toolsResult = await client.listTools()
-      const tools = toolsResult.tools.map((t) => `mcp:${server.name}/${t.name}`)
-      const state: McpConnectionState = {
-=======
     const res = await client.listResources()
     for (const r of res.resources) {
       resources.push(r.uri)
       resourceMetas.set(`${server.name}:${r.uri}`, {
->>>>>>> origin/main
         serverId: server.id,
         serverName: server.name,
         uri: r.uri,

@@ -1,11 +1,6 @@
-<<<<<<< HEAD
-import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
-=======
 import { readdir, readFile, writeFile, mkdir, unlink } from 'node:fs/promises'
 import { join, resolve, basename, extname } from 'node:path'
 import { spawnSync } from 'node:child_process'
->>>>>>> origin/main
 import { config } from '../config'
 import { resolveInsideRoot } from '../fs/path-jail'
 import { logger } from '../log'

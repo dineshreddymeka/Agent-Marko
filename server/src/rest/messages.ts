@@ -1,8 +1,5 @@
 import { jsonResponse } from './helpers'
-<<<<<<< HEAD
-=======
 import { requireDatabaseOrResponse } from './db-guard'
->>>>>>> origin/main
 
 export async function handleMessages(req: Request, path: string): Promise<Response | null> {
   const { messagesRepo } = await import('../db/repositories/messages')
