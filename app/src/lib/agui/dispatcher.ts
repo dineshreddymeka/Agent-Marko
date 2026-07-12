@@ -22,7 +22,6 @@ import {
 import type {
   HermesApprovalRequiredPayload,
   HermesContextPayload,
-  HermesCoworkProgressPayload,
   HermesCronFiredPayload,
   HermesSkillLearnedPayload,
   HermesTitlePayload,
@@ -59,16 +58,6 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
       chat.setStage('done')
       chat.setRunStatus('idle')
       chat.setRunId(null)
-      // Finish any tools still marked executing (cancel / early finish races).
-      for (const [id, tc] of Object.entries(chat.toolCalls)) {
-        if (
-          tc.status === 'executing' ||
-          tc.status === 'pending' ||
-          tc.status === 'streaming-args'
-        ) {
-          chat.upsertToolCall(id, { status: 'done' })
-        }
-      }
       window.setTimeout(() => {
         useChatStore.getState().clearStage()
       }, 1200)
@@ -349,51 +338,6 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
           toolName: payload.toolName,
           args: (payload.args ?? {}) as Record<string, unknown>,
         })
-      } else if (name === 'hermes.cowork.progress') {
-        const payload = value as HermesCoworkProgressPayload & { line?: string }
-        const line =
-          (typeof payload.line === 'string' && payload.line.trim()) ||
-          payload.text?.trim() ||
-          (payload.phase === 'tool' && payload.tool
-            ? `Running ${payload.tool}…`
-            : payload.phase === 'started'
-              ? `Open Cowork started (${payload.taskId})`
-              : payload.phase === 'ended'
-                ? `Open Cowork finished (${payload.taskId})`
-                : payload.phase === 'error'
-                  ? payload.text || 'Open Cowork error'
-                  : '')
-        if (line) {
-          const toolCalls = chat.toolCalls
-          const executing = Object.values(toolCalls).find(
-            (tc) =>
-              tc.name === 'delegate_to_cowork' &&
-              (tc.status === 'executing' ||
-                tc.status === 'pending' ||
-                tc.status === 'streaming-args'),
-          )
-          if (executing) {
-            const nextProgress =
-              payload.phase === 'delta' && executing.progress
-                ? `${executing.progress}${line}`.slice(-800)
-                : line.slice(0, 800)
-            chat.upsertToolCall(executing.id, { progress: nextProgress })
-          }
-        }
-        if (payload.phase === 'ended' && payload.ok !== false) {
-          ui.addToast({
-            title: 'Open Cowork finished',
-            description: payload.text?.slice(0, 120) || payload.taskId,
-            variant: 'success',
-          })
-        } else if (payload.phase === 'error') {
-          const aborted = /abort/i.test(payload.text ?? '')
-          ui.addToast({
-            title: aborted ? 'Open Cowork cancelled' : 'Open Cowork failed',
-            description: payload.text?.slice(0, 160) || payload.taskId,
-            variant: aborted ? 'attention' : 'danger',
-          })
-        }
       }
       break
     }

@@ -129,22 +129,7 @@ export async function retryLastRun(sessionId: string): Promise<void> {
 
 export function cancelRun(): void {
   if (agent) agent.abortRun()
-  const chat = useChatStore.getState()
-  chat.setRunStatus('cancelled')
-  // Clear stuck tool cards (abort may skip a clean TOOL_CALL_RESULT race).
-  for (const [id, tc] of Object.entries(chat.toolCalls)) {
-    if (
-      tc.status === 'executing' ||
-      tc.status === 'pending' ||
-      tc.status === 'streaming-args'
-    ) {
-      chat.upsertToolCall(id, {
-        status: 'error',
-        result: { error: 'Cancelled' },
-        progress: tc.progress,
-      })
-    }
-  }
+  useChatStore.getState().setRunStatus('cancelled')
 }
 
 export async function respondToApproval(

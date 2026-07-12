@@ -65,6 +65,9 @@ Rebuild the agent WebUI as **Open Jarvis** from the Hermes WebUI concept (vanill
 - [x] System cron **Bug Bounty** (`*/5 * * * *`) — check → auto-fix hygiene
 - [x] System cron **Status Auto-Approve** (`*/5 * * * *`) — ensure `autoApproveAll`, approve pending HITL, health snapshot
 - [x] `GET /api/cron/system` + `workflow.systemKind` in Swagger
+- [x] Chrome tools: `chrome_open` / `chrome_navigate` / `chrome_get_content` / `chrome_screenshot` (mock-friendly)
+- [x] MCP mocks: `bun run mcp:mock` + `bun run mcp:mock-chrome` (`document_outline`, chrome tab tools)
+- [x] Cowork document real-world scenarios: `bun run test:cowork` / `verify:cowork`
 
 ### Pending phases (all auto-approval + 5-min status cron)
 

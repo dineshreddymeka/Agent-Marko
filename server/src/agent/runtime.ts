@@ -41,6 +41,7 @@ import './tools/delegate_to_agent'
 import './tools/delegate_to_cowork'
 import './tools/code'
 import './tools/index_search'
+import './tools/chrome'
 
 const MAX_TOOL_ITERATIONS = 20
 const THINKING_FLUSH_MS = 100
