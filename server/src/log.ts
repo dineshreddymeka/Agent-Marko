@@ -74,7 +74,7 @@ export function isDebugChannel(channel: 'llm' | 'llmFull' | 'agui' | 'db' | 'mcp
   }
 }
 
-function usePretty(): boolean {
+function preferPrettyLogs(): boolean {
   if (envFlag('LOG_PRETTY')) return true
   if (envFlag('LOG_JSON')) return false
   return config.LOG_LEVEL === 'debug'
@@ -155,7 +155,7 @@ function formatPretty(level: LogLevel, message: string, ctx: LogContext): string
 function write(level: LogLevel, message: string, ctx?: LogContext): void {
   if (!shouldLog(level)) return
   const normalized = normalizeCtx(ctx)
-  if (usePretty()) {
+  if (preferPrettyLogs()) {
     const line = formatPretty(level, message, normalized)
     if (level === 'error') console.error(line)
     else if (level === 'warn') console.warn(line)
