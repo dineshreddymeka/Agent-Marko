@@ -28,6 +28,7 @@
     "migrate": "bun run --filter server migrate",
     "db:backup": "bun run scripts/db-backup.ts",
     "db:restore": "bun run scripts/db-restore.ts",
+<<<<<<< HEAD
     "db:restore:verify": "bun run scripts/db-restore-verify.ts",
     "db:preflight": "bun run scripts/db-preflight-integrity.ts",
     "db:create-app-role": "bun run scripts/db-create-app-role.ts",
@@ -36,6 +37,9 @@
     "office:sso-open": "bun run scripts/setup-microsoft-sso.ts -- --open",
     "openapi:export": "bun run scripts/openapi-export.ts",
     "sca:check": "bun run scripts/sca-check.ts"
+=======
+    "clean": "bun run scripts/cleanup.ts"
+>>>>>>> origin/cursor/setup-dev-environment-9393
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

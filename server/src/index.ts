@@ -4,6 +4,7 @@ import { guardRequest, auth } from './auth'
 import { isMockLlmEnabled } from './agent/mock-llm'
 import { config } from './config'
 import { startCronScheduler } from './cron/scheduler'
+import { startCleanupWorker } from './cleanup/worker'
 import { pingDatabase } from './db/client'
 import { runMigrations } from './db/migrate'
 import { getHealthResponse } from './health'
@@ -74,6 +75,7 @@ async function boot(): Promise<void> {
   await startIndexerWorker()
   startWorkspaceWatcher()
   await startCronScheduler()
+  if (config.CLEANUP_ENABLED) startCleanupWorker()
   await connectAll()
   await refreshMcpToolBridge()
   logger.info('Boot complete')
