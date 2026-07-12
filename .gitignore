@@ -18,7 +18,8 @@ playwright-report/
 *.tsbuildinfo
 
 # Local-only / never ship (Cursor SDK, bridges, ad-hoc inspect)
-tools/
+# Root-only: do not ignore server/src/agent/tools/*
+/tools/
 **/cursor-llm-bridge/
 **/CURSOR-PROVIDER.md
 docs/CURSOR-PROVIDER.md
