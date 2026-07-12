@@ -122,3 +122,34 @@ jobs:
             exit 0
           fi
           snyk monitor --all-projects
+
+  # Free SonarCloud / SonarQube Cloud (https://sonarcloud.io — Free / OSS plan).
+  # 1) Import this GitHub repo at https://sonarcloud.io/projects/create
+  # 2) Align sonar.organization + sonar.projectKey in sonar-project.properties
+  # 3) Add repo secret SONAR_TOKEN (My Account → Security → Generate Token)
+  # Job skips cleanly until the secret is configured.
+  sonarcloud:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check SONAR_TOKEN
+        id: sonar_token
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::SONAR_TOKEN not set — skipping. Create a free SonarCloud project at https://sonarcloud.io and add the token as repo secret SONAR_TOKEN."
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: SonarCloud Scan
+        if: steps.sonar_token.outputs.present == 'true'
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

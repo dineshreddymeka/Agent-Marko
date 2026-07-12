@@ -32,7 +32,7 @@ bun run dev
 | `bun run verify:all` | All verifiers (skips Phase 2 if Docker daemon unavailable) |
 | `bun run test:e2e` | Playwright smoke tests (starts dev server) |
 
-CI runs on push/PR via `.github/workflows/ci.yml` (unit + mock AG-UI + Playwright + Postgres + Snyk).
+CI runs on push/PR via `.github/workflows/ci.yml` (unit + mock AG-UI + Playwright + Postgres + Snyk + SonarCloud).
 
 ### Free Snyk (optional)
 
@@ -44,6 +44,18 @@ CI includes a free-tier [Snyk](https://snyk.io) job for dependency and code scan
 4. Name: `SNYK_TOKEN`, value: your token.
 
 Until the secret is set, the Snyk job skips cleanly. With the token present, scans fail the job on **high** (or worse) severity findings. Pushes to `main` also run `snyk monitor` so the project stays visible in the Snyk dashboard.
+
+### Free SonarCloud (optional)
+
+CI includes a free [SonarCloud](https://sonarcloud.io) (Sonar) job for code quality and security analysis. To enable it:
+
+1. Sign up / import this repo at https://sonarcloud.io/projects/create (Free or OSS plan for public repos).
+2. Match `sonar.organization` and `sonar.projectKey` in [`sonar-project.properties`](./sonar-project.properties) to the values SonarCloud shows for the project.
+3. Generate a token: **My Account → Security → Generate Token**.
+4. In GitHub: **Settings → Secrets and variables → Actions → New repository secret**
+5. Name: `SONAR_TOKEN`, value: your token.
+
+Until the secret is set, the SonarCloud job skips cleanly.
 
 Settings → **Debug** tab: replay recorded AG-UI runs through the UI dispatcher.
 
