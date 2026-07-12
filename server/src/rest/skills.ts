@@ -91,6 +91,8 @@ export async function handleSkills(req: Request, path: string): Promise<Response
         }
       }
     }
+    const { invalidateCapabilityManifest } = await import('../capabilities')
+    invalidateCapabilityManifest('skills-sync')
     return jsonResponse({
       ...diskResult,
       synced: count,

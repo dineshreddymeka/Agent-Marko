@@ -35,6 +35,17 @@ const envSchema = z.object({
   HERMES_MCP_EVENT_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(30),
   LLM_BASE_URL: z.string().default('https://api.openai.com/v1'),
   LLM_API_KEY: z.string().default(''),
+  /**
+   * Preferred OpenAI-compatible base URL for agent runs with tool_calls.
+   * When unset and LLM_BASE_URL is the chat-only lm-bridge (:3456), tools degrade.
+   */
+  HERMES_AGENT_LLM_URL: z.string().default(''),
+  /** Optional dedicated embeddings base URL (defaults to HERMES_AGENT_LLM_URL or LLM_BASE_URL). */
+  HERMES_EMBEDDINGS_URL: z.string().default(''),
+  /** Operator rollback: `legacy` keeps regex tool subsetting; `capabilities` is default. */
+  HERMES_ROUTING: z.enum(['legacy', 'capabilities']).default('capabilities'),
+  /** Bounded connect/first-byte timeout when probing the agent LLM. */
+  HERMES_AGENT_LLM_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(5_000),
   EMBEDDINGS_MODEL: z.string().default('text-embedding-3-small'),
   EMBEDDING_DIMENSION: z.coerce.number().default(1536),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),

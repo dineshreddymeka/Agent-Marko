@@ -74,6 +74,8 @@ export function bridgeMcpTools(): void {
 
 export async function refreshMcpToolBridge(): Promise<void> {
   bridgeMcpTools()
+  const { invalidateCapabilityManifest } = await import('../capabilities')
+  invalidateCapabilityManifest('mcp-bridge-refresh')
 }
 
 export function unbridgeServerTools(serverName: string): void {

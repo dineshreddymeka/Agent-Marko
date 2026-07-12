@@ -4,8 +4,9 @@ import { HermesCustomEvents } from '@hermes/shared'
 import type { EventEmitter } from '../agui/events'
 import { cancelPendingApprovalsForRun, requestApproval } from './approval'
 import { buildAgentContext } from './context'
-import { streamChatCompletion, type ChatMessage, type LlmTool } from './llm'
-import { getTool, isDangerous, toLlmTools } from './tools/registry'
+import { streamChatCompletion, type ChatMessage } from './llm'
+import { getTool, isDangerous } from './tools/registry'
+import { planTurnCapabilities } from '../capabilities'
 import {
   shouldAutoShowCronForm,
   looksLikeCronIntent,
@@ -45,120 +46,6 @@ import './tools/chrome'
 
 const MAX_TOOL_ITERATIONS = 20
 const THINKING_FLUSH_MS = 100
-
-const CRON_TOOL_NAMES = new Set([
-  'cron_form_show',
-  'cron_create',
-  'cron_list',
-  'cron_delete',
-])
-
-const FORM_TOOL_NAMES = new Set(['form_request_show'])
-
-/** Focused tool set for document/draft turns — fewer options help nano models act. */
-const DOCUMENT_FOCUS_TOOLS = new Set([
-  'document_form_show',
-  'write_file',
-  'read_file',
-  'list_dir',
-  'delegate_to_cowork',
-  'web_search',
-  'fetch_url',
-  'memory_search',
-  'memory_save',
-  'skill_search',
-  'index_search',
-  'a2ui_render',
-])
-
-/** Focused tool set for generic form-builder turns. */
-const FORM_FOCUS_TOOLS = new Set([
-  'form_request_show',
-  'a2ui_render',
-  'write_file',
-  'memory_save',
-  'memory_search',
-])
-
-function selectLlmTools(lastUserText: string): LlmTool[] {
-  const all = toLlmTools()
-  if (looksLikeCronIntent(lastUserText)) {
-    return all.filter((t) => !FORM_TOOL_NAMES.has(t.function.name))
-  }
-  const withoutCron = all.filter((t) => !CRON_TOOL_NAMES.has(t.function.name))
-  if (looksLikeFormIntent(lastUserText)) {
-    const focused = withoutCron.filter(
-      (t) => FORM_FOCUS_TOOLS.has(t.function.name) || t.function.name.startsWith('mcp:'),
-    )
-    return focused.map((t) => {
-      if (t.function.name === 'form_request_show') {
-        return {
-          ...t,
-          function: {
-            ...t.function,
-            description:
-              'REQUIRED for vague "make/create/build a form" asks. Show the interactive form-request builder — never greet or ask what they want help with.',
-          },
-        }
-      }
-      return t
-    })
-  }
-  const withoutCronOrForm = withoutCron.filter((t) => !FORM_TOOL_NAMES.has(t.function.name))
-  if (!looksLikeDocumentIntent(lastUserText)) {
-    return withoutCronOrForm
-  }
-  const focused = withoutCronOrForm.filter(
-    (t) => DOCUMENT_FOCUS_TOOLS.has(t.function.name) || t.function.name.startsWith('mcp:'),
-  )
-  const priority = [
-    'document_form_show',
-    'write_file',
-    'delegate_to_cowork',
-    'read_file',
-    'list_dir',
-    'web_search',
-  ]
-  const sorted = [...focused].sort((a, b) => {
-    const ai = priority.indexOf(a.function.name)
-    const bi = priority.indexOf(b.function.name)
-    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
-  })
-  // Strengthen descriptions for the primary actions this turn.
-  return sorted.map((t) => {
-    if (t.function.name === 'document_form_show') {
-      return {
-        ...t,
-        function: {
-          ...t.function,
-          description:
-            'REQUIRED when topic/audience/length/deliverable type are missing. Show the interactive document/PPT form — never ask clarifying questions in plain text.',
-        },
-      }
-    }
-    if (t.function.name === 'write_file') {
-      return {
-        ...t,
-        function: {
-          ...t.function,
-          description:
-            'REQUIRED for clear workspace markdown drafts with a known topic. Write drafts/<topic>-draft.md — do not invent topics from "for me". If topic unclear, call document_form_show instead.',
-        },
-      }
-    }
-    if (t.function.name === 'delegate_to_cowork' && prefersCoworkDocument(lastUserText)) {
-      return {
-        ...t,
-        function: {
-          ...t.function,
-          description:
-            'For fully specified PDF/Word/PPT requests only. If audience/length/style are missing, call document_form_show instead of asking in text.',
-        },
-      }
-    }
-    return t
-  })
-}
 
 async function emitContextUsage(
   emit: EventEmitter,
@@ -272,6 +159,21 @@ export async function runNativeAgent(
       log.warn('Failed to persist user message', { error: String(err) })
     }
 
+    const plan = await planTurnCapabilities({ messages: input.messages })
+    if (plan.route.degraded) {
+      await emit({
+        type: EventType.CUSTOM,
+        name: HermesCustomEvents.CAPABILITIES_DEGRADED,
+        value: {
+          reason: plan.route.reason,
+          toolsEnabled: plan.route.toolsEnabled,
+          bridgeFallback: plan.route.reason === 'bridge_fallback',
+          circuitState: plan.route.circuitState,
+          lastFailure: plan.route.lastFailure,
+        },
+      })
+    }
+
     let iterations = 0
     let runUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
 
@@ -279,7 +181,7 @@ export async function runNativeAgent(
     // embedding bridge cannot block cron/document/form surfaces.
 
     // Deterministic cron form for small models that narrate instead of calling tools.
-    if (shouldAutoShowCronForm(lastUserText)) {
+    if (plan.allowPreLlmInterceptors && shouldAutoShowCronForm(lastUserText)) {
       const tool = getTool('cron_form_show')
       if (tool) {
         const messageId = randomUUID()
@@ -335,7 +237,7 @@ export async function runNativeAgent(
 
     // Deterministic document/PPT form for vague asks (mirrors cron_form_show).
     // Prevents plain-text Topic/Audience/Length questionnaires and "me" stub drafts.
-    if (shouldAutoShowDocumentForm(lastUserText)) {
+    if (plan.allowPreLlmInterceptors && shouldAutoShowDocumentForm(lastUserText)) {
       const tool = getTool('document_form_show')
       if (tool) {
         const prefill = buildDocumentFormFromUserText(lastUserText)
@@ -401,7 +303,7 @@ export async function runNativeAgent(
 
     // Deterministic generic form-request surface (mirrors cron/document forms).
     // Prevents greeting resets and plain-text "what can I help with?" on form asks.
-    if (shouldAutoShowFormRequest(lastUserText)) {
+    if (plan.allowPreLlmInterceptors && shouldAutoShowFormRequest(lastUserText)) {
       const tool = getTool('form_request_show')
       if (tool) {
         const messageId = randomUUID()
@@ -458,7 +360,7 @@ export async function runNativeAgent(
 
     // Deterministic workspace draft for clear create/draft/work-file asks.
     // Small models otherwise reply "What would you like help with?" without tools.
-    if (shouldAutoCreateDocumentDraft(lastUserText)) {
+    if (plan.allowPreLlmInterceptors && shouldAutoCreateDocumentDraft(lastUserText)) {
       const tool = getTool('write_file')
       if (tool) {
         const topic = extractDocumentTopic(lastUserText) ?? 'draft'
@@ -516,9 +418,8 @@ export async function runNativeAgent(
 
     const ctx = await buildAgentContext(input)
     const chatMessages = toChatMessages(input, ctx.systemPrompt)
-    // Hide cron tools on non-schedule turns; focus document tools on draft turns
-    // so nano models get actionable write_file / delegate_to_cowork first.
-    const tools = selectLlmTools(lastUserText)
+    // Capability hub retrieval (semantic/lexical) or HERMES_ROUTING=legacy subset.
+    const tools = plan.tools.tools
 
     while (iterations++ < MAX_TOOL_ITERATIONS) {
       if (signal.aborted) return
@@ -540,7 +441,8 @@ export async function runNativeAgent(
           model: ctx.profile.model,
           temperature: ctx.profile.temperature,
           messages: chatMessages,
-          tools,
+          tools: tools.length > 0 ? tools : undefined,
+          baseUrl: plan.route.baseUrl,
           signal,
         })) {
           if (signal.aborted) return

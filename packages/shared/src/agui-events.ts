@@ -10,6 +10,8 @@ export const HermesCustomEvents = {
   TOOL_ERROR: 'hermes.tool.error',
   /** Live Open Cowork JSONL progress streamed during `delegate_to_cowork`. */
   COWORK_PROGRESS: 'hermes.cowork.progress',
+  /** Agent LLM fell back to chat-only bridge — tools unavailable this turn. */
+  CAPABILITIES_DEGRADED: 'hermes.capabilities.degraded',
 } as const
 
 export type HermesCustomEventName =
@@ -21,6 +23,7 @@ export type HermesCustomEventName =
   | typeof HermesCustomEvents.APPROVAL_REQUIRED
   | typeof HermesCustomEvents.TOOL_ERROR
   | typeof HermesCustomEvents.COWORK_PROGRESS
+  | typeof HermesCustomEvents.CAPABILITIES_DEGRADED
 
 export interface HermesContextPayload {
   promptTokens?: number
@@ -64,6 +67,14 @@ export interface HermesCoworkProgressPayload {
   ok?: boolean
 }
 
+export interface HermesCapabilitiesDegradedPayload {
+  reason: string
+  toolsEnabled: boolean
+  bridgeFallback: boolean
+  circuitState?: string
+  lastFailure?: string | null
+}
+
 export type HermesCustomPayload =
   | HermesContextPayload
   | HermesTitlePayload
@@ -71,6 +82,7 @@ export type HermesCustomPayload =
   | HermesSkillLearnedPayload
   | HermesApprovalRequiredPayload
   | HermesCoworkProgressPayload
+  | HermesCapabilitiesDegradedPayload
   | Record<string, unknown>
 
 export interface HermesCustomEvent {

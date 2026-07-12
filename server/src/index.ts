@@ -80,6 +80,18 @@ async function boot(): Promise<void> {
   if (config.CLEANUP_ENABLED) startCleanupWorker()
   await connectAll()
   await refreshMcpToolBridge()
+  try {
+    const { refreshCapabilityManifest } = await import('./capabilities')
+    const manifest = await refreshCapabilityManifest('boot')
+    logger.info('Capability manifest warmed', {
+      tools: manifest.tools.length,
+      skills: manifest.skills.length,
+      plugins: manifest.plugins.length,
+      routing: manifest.routing,
+    })
+  } catch (err) {
+    logger.warn('Capability manifest warm failed', { error: String(err) })
+  }
   logger.info('Boot complete')
 }
 

@@ -41,6 +41,19 @@ export function registerSlashCommand(command: SlashCommand): void {
   }
 }
 
+/** Sync MCP slash commands from GET /api/capabilities manifest. */
+export function syncCapabilitySlashCommands(
+  cmds: ReadonlyArray<{ name: string; description: string }>,
+): void {
+  for (const entry of cmds) {
+    const cmd = entry.name.startsWith('/') ? entry.name : `/${entry.name}`
+    registerSlashCommand({
+      cmd,
+      desc: entry.description || `MCP prompt ${cmd}`,
+    })
+  }
+}
+
 /** Filter commands by the current composer token (e.g. `/mo` → `/model`). */
 export function filterSlashCommands(input: string): SlashCommand[] {
   const token = (input.split(/\s/)[0] ?? '').toLowerCase()

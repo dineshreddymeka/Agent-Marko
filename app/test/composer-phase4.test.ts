@@ -4,6 +4,7 @@ import {
   listSlashCommands,
   matchSlashCommand,
   registerSlashCommand,
+  syncCapabilitySlashCommands,
 } from '../src/lib/slash-commands'
 import { formatAttachmentLine } from '../src/lib/workspace-upload'
 import { isFrontendTool, getFrontendTools } from '../src/lib/agui/frontend-tools'
@@ -30,6 +31,17 @@ describe('slash command registry', () => {
   test('registerSlashCommand is extensible', () => {
     registerSlashCommand({ cmd: '/test-ext', desc: 'ext' })
     expect(filterSlashCommands('/test-ext').some((c) => c.cmd === '/test-ext')).toBe(true)
+  })
+
+  test('syncCapabilitySlashCommands registers MCP prompts', () => {
+    syncCapabilitySlashCommands([
+      { name: 'summarize', description: 'Summarize selection', server: 'demo' },
+      { name: '/translate', description: 'Translate text', server: 'demo' },
+    ])
+    const cmds = listSlashCommands().map((c) => c.cmd)
+    expect(cmds).toContain('/summarize')
+    expect(cmds).toContain('/translate')
+    expect(filterSlashCommands('/summarize')[0]?.desc).toBe('Summarize selection')
   })
 })
 

@@ -16,7 +16,7 @@ export interface Session {
 export interface Message {
   id: string
   sessionId: string
-  runId: string
+  runId: string | null
   role: 'user' | 'assistant' | 'system' | 'tool'
   content: string
   toolName: string | null
@@ -24,7 +24,7 @@ export interface Message {
   toolResult: Record<string, unknown> | null
   thinking: string | null
   a2ui: Record<string, unknown> | null
-  tokens: number
+  tokens: number | null
   createdAt: string
 }
 
@@ -78,7 +78,7 @@ export interface MemoryEntry {
   sourceSession: string | null
   importance: number
   createdAt: string
-  lastAccessed: string
+  lastAccessed: string | null
 }
 
 export interface CronJob {
@@ -395,6 +395,69 @@ export interface DeletedResponse {
 
 export interface OkResponse {
   ok: boolean
+}
+
+/** GET /api/capabilities — unified capability manifest + agent LLM health. */
+export type CapabilityToolSource = 'native' | 'mcp'
+
+export interface CapabilityToolEntry {
+  name: string
+  source: CapabilityToolSource
+  server?: string
+  serverId?: string
+  dangerous: boolean
+  description: string
+  trusted: boolean
+}
+
+export interface CapabilitySkillEntry {
+  id: string
+  name: string
+  description: string
+  triggers: string[] | null
+  source: string
+}
+
+export interface CapabilitySlashCommandEntry {
+  name: string
+  server: string
+  description: string
+}
+
+export type AgentLlmCircuitState = 'closed' | 'open' | 'half_open'
+
+export interface AgentLlmHealthSnapshot {
+  preferredAgentBaseUrl: string | null
+  bridgeFallbackBaseUrl: string
+  circuitState: AgentLlmCircuitState
+  consecutiveFailures: number
+  lastFailure: string | null
+  lastSuccessAt: string | null
+  lastHealthCheckAt: string | null
+  lastHealthOk: boolean
+  routing: 'legacy' | 'capabilities'
+  timeoutMs: number
+  /** Present when the server merges resolveAgentLlmRoute into the payload. */
+  degraded?: boolean
+  toolsEnabled?: boolean
+}
+
+export interface CapabilitiesResponse {
+  tools: CapabilityToolEntry[]
+  skills: CapabilitySkillEntry[]
+  plugins: Array<{
+    id: string
+    kind: 'mcp' | 'cowork'
+    name: string
+    status: string
+    toolCount: number
+    trusted: boolean
+  }>
+  slashCommands: CapabilitySlashCommandEntry[]
+  refreshedAt: string
+  retrievalMode: 'semantic' | 'lexical' | 'legacy'
+  routing: 'legacy' | 'capabilities'
+  agentLlm: AgentLlmHealthSnapshot
 }
 
 /** GET/PUT /api/approval/config */

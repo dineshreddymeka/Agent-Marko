@@ -14,6 +14,7 @@ import { handleApproval } from './approval'
 import { handleApiTokens } from './tokens'
 import { handleOffice } from './office'
 import { handleIndexer } from './indexer'
+import { handleCapabilities } from './capabilities'
 import { handleOpenApiDocs } from './openapi/serve'
 import { jsonResponse } from './helpers'
 import { isHermesError } from '../errors'
@@ -35,6 +36,7 @@ const handlers: Array<{ prefix: string; handler: Handler }> = [
   { prefix: '/api/tokens', handler: handleApiTokens },
   { prefix: '/api/office', handler: handleOffice },
   { prefix: '/api/indexer', handler: handleIndexer },
+  { prefix: '/api/capabilities', handler: handleCapabilities },
   { prefix: '/api/debug', handler: handleDebug },
   { prefix: '/api/approval', handler: handleApproval },
 ]

@@ -12,12 +12,25 @@ function toDto(row: typeof messages.$inferSelect): Message {
     content: row.content,
     toolName: row.toolName,
     toolArgs: (row.toolArgs as Record<string, unknown> | null) ?? null,
-    toolResult: row.toolResult ?? null,
+    toolResult: (row.toolResult as Record<string, unknown> | null) ?? null,
     thinking: row.thinking,
-    a2ui: row.a2ui ?? null,
+    a2ui: (row.a2ui as Record<string, unknown> | null) ?? null,
     tokens: row.tokens,
     createdAt: row.createdAt.toISOString(),
   }
+}
+
+type CreateMessageInput = {
+  sessionId: string
+  runId?: string | null
+  role: Message['role']
+  content: string
+  toolName?: string | null
+  toolArgs?: Record<string, unknown> | null
+  toolResult?: unknown
+  thinking?: string | null
+  a2ui?: unknown
+  tokens?: number | null
 }
 
 export const messagesRepo = {
@@ -55,18 +68,7 @@ export const messagesRepo = {
     return row ? toDto(row) : null
   },
 
-  async create(input: {
-    sessionId: string
-    runId?: string | null
-    role: Message['role']
-    content: string
-    toolName?: string | null
-    toolArgs?: Record<string, unknown> | null
-    toolResult?: unknown
-    thinking?: string | null
-    a2ui?: unknown
-    tokens?: number | null
-  }): Promise<Message> {
+  async create(input: CreateMessageInput): Promise<Message> {
     const db = getDb()
     const [row] = await db
       .insert(messages)
@@ -87,7 +89,7 @@ export const messagesRepo = {
     return toDto(row)
   },
 
-  async bulkCreate(items: Parameters<typeof messagesRepo.create>[0][]): Promise<Message[]> {
+  async bulkCreate(items: CreateMessageInput[]): Promise<Message[]> {
     if (items.length === 0) return []
     const db = getDb()
     const rows = await db

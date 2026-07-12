@@ -16,6 +16,14 @@ Hermes UI is a Bun monorepo: `app/` (React 19 + Vite, port **5173**), `server/` 
 - `.env` (gitignored) is required and already created for this VM with a Linux `HERMES_DATA_DIR` (`/home/ubuntu/hermes-data`), a generated `BETTER_AUTH_SECRET`, and `HERMES_MOCK_LLM=1` + `LLM_API_KEY=mock` so the agent runs without a real LLM key. Set a real `LLM_API_KEY` (and unset the mock flags) to use a live OpenAI-compatible provider.
 - Keep the Postgres data dir OUTSIDE the repo. If `HERMES_DATA_DIR` points inside `/workspace`, Docker writes root-owned files there and `eslint`/`tsc` fail with `EACCES` while scanning them.
 - In localhost mode (`HOST=127.0.0.1`, `ALLOW_SIGNUP=false`) auth is bypassed, so no login is needed for local dev/testing.
+- **Agent LLM / lm-bridge:** `tools/lm-bridge` is **development-only** text-chat degradation — it strips `tools` and cannot run MCP/A2UI/Cowork. Full Cursor-like agent behavior needs a tool-capable OpenAI-compatible endpoint.
+  - `HERMES_AGENT_LLM_URL` — preferred tool-capable base URL for `/agui` (tried first).
+  - `LLM_BASE_URL` — used when agent URL unset; if it points at `:3456` (lm-bridge), runtime falls back to bridge only when the agent circuit is open / URL unset (tools unavailable; UI gets `hermes.capabilities.degraded`).
+  - `HERMES_EMBEDDINGS_URL` — optional dedicated embeddings base (defaults to agent URL, never prefers the chat-only bridge).
+  - `HERMES_ROUTING=capabilities|legacy` — operator rollback; `legacy` restores regex `selectLlmTools` subsetting + pre-LLM interceptors. Default is `capabilities` (LLM chooses tools).
+  - `HERMES_AGENT_LLM_TIMEOUT_MS` — bounded probe timeout before recording an agent-endpoint failure (default 5000).
+  - `HERMES_LM_BRIDGE=0|1` — optional auto-start of lm-bridge from `scripts/dev.ts` for local text chat only.
+  - Manifest: `GET /api/capabilities`; warm MCP+manifest: `POST /api/capabilities/warm`. Debug: `GET /api/debug/health` includes `capabilities` + `agentLlm`.
 
 ### Lint / test / build
 - Lint: `bun run lint` (warnings are expected; exit 0).
