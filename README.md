@@ -72,7 +72,7 @@ Until the secret is set, the Snyk job skips cleanly. With the token present, sca
 
 CI includes a full-project [SonarCloud](https://sonarcloud.io) scan so nothing in the monorepo is skipped:
 
-- Sources: `app/src`, `server/src`, `packages/shared/src`, `scripts`, `server/migrations`, `.github` workflows, `docker-compose.yml`
+- Sources: entire repo (`sonar.sources=.`) including `app`, `server`, `packages/shared`, `scripts`, SQL migrations, GitHub workflows, and `docker-compose.yml`
 - Tests: unit suites + Playwright `e2e` + colocated `*.test.ts`
 - Coverage: LCOV from `bun test --coverage`
 - Quality gate: `sonar.qualitygate.wait=true` (job fails if the gate fails)
