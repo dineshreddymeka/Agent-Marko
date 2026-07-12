@@ -10,6 +10,7 @@
     ".": "./src/index.ts",
     "./agui-events": "./src/agui-events.ts",
     "./api-types": "./src/api-types.ts",
-    "./a2ui-catalog": "./src/a2ui-catalog.ts"
+    "./a2ui-catalog": "./src/a2ui-catalog.ts",
+    "./cron-workflow": "./src/cron-workflow.ts"
   }
 }

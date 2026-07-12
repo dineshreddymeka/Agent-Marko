@@ -7,6 +7,8 @@ import { sessionsRepo } from '../db/repositories/sessions'
 import { runEventsRepo } from '../db/repositories/run_events'
 import { nativeProvider } from '../agent/providers/native'
 import { runWithCronBindings } from './run-bindings'
+import { runSystemMaintenance } from './maintenance'
+import { ensureSystemCronJobs, isSystemCronJob } from './system-jobs'
 import { logger } from '../log'
 
 const scheduled = new Map<string, Cron>()
@@ -22,6 +24,7 @@ export async function runCronJob(jobId: string, opts?: { force?: boolean }): Pro
 
   logger.info('Cron job fired', { jobId, name: job.name })
   const workflow = job.workflow
+  const systemKind = isSystemCronJob(job)
   const bindings = {
     jobId: job.id,
     jobName: job.name,
@@ -33,6 +36,7 @@ export async function runCronJob(jobId: string, opts?: { force?: boolean }): Pro
     mcpAllowed: job.mcpServerIds,
     skillsForced: job.skillIds,
     headlessAutoApprove: bindings.headlessAutoApprove,
+    systemKind: systemKind ?? null,
   }
   let runId: string | null = null
 
@@ -64,8 +68,55 @@ export async function runCronJob(jobId: string, opts?: { force?: boolean }): Pro
     emit({
       type: EventType.CUSTOM,
       name: HermesCustomEvents.CRON_FIRED,
-      value: { jobId: job.id, jobName: job.name },
+      value: { jobId: job.id, jobName: job.name, systemKind },
     } as BaseEvent)
+
+    if (systemKind) {
+      const result = await runSystemMaintenance(systemKind)
+      detail.maintenance = result
+      detail.attempts = 1
+      const summary = [
+        `## ${job.name}`,
+        '',
+        `- kind: \`${result.kind}\``,
+        `- checked: ${result.checked}`,
+        `- fixed: ${result.fixed}`,
+        `- ok: ${result.ok}`,
+        '',
+        ...(result.findings.length
+          ? ['### Findings', ...result.findings.map((f) => `- ${f}`)]
+          : ['No findings.']),
+      ].join('\n')
+
+      const messageId = randomUUID()
+      emit({
+        type: EventType.TEXT_MESSAGE_START,
+        messageId,
+        role: 'assistant',
+      } as BaseEvent)
+      emit({
+        type: EventType.TEXT_MESSAGE_CONTENT,
+        messageId,
+        delta: summary,
+      } as BaseEvent)
+      emit({
+        type: EventType.TEXT_MESSAGE_END,
+        messageId,
+      } as BaseEvent)
+
+      await cronRepo.updateJob(jobId, { lastRun: new Date() })
+      if (!result.ok) {
+        if (runId) await cronRepo.finishRun(runId, 'failed', result.findings.join('\n'), detail)
+        logger.warn('System cron maintenance reported failures', {
+          jobId,
+          kind: systemKind,
+          findings: result.findings.length,
+        })
+        return
+      }
+      if (runId) await cronRepo.finishRun(runId, 'completed', null, detail)
+      return
+    }
 
     const maxAttempts = Math.max(1, workflow.retry?.maxAttempts ?? 1)
     const backoffSec = Math.max(0, workflow.retry?.backoffSec ?? 0)
@@ -109,6 +160,12 @@ export async function runCronJob(jobId: string, opts?: { force?: boolean }): Pro
 }
 
 export async function startCronScheduler(): Promise<void> {
+  try {
+    await ensureSystemCronJobs()
+  } catch (err) {
+    logger.warn('Failed to seed system cron jobs', { error: String(err) })
+  }
+
   const jobs = await cronRepo.listJobs()
   for (const job of jobs) {
     if (!job.enabled) continue
