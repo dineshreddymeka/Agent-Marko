@@ -38,9 +38,10 @@ jobs:
         with:
           scan-type: fs
           scan-ref: .
-          severity: CRITICAL,HIGH
+          # Strict SCA: fail on any severity, including unfixed advisories.
+          severity: CRITICAL,HIGH,MEDIUM,LOW
           exit-code: "1"
-          ignore-unfixed: true
+          ignore-unfixed: false
           format: sarif
           output: trivy-results.sarif
       - name: Upload Trivy SARIF
@@ -58,9 +59,11 @@ jobs:
       - name: Run OSV-Scanner
         uses: google/osv-scanner-action/osv-scanner-action@764c91816374ff2d8fc2095dab36eecd42d61638 # v1.9.2
         with:
+          # Strict SCA: recursive lockfile/manifest scan; non-zero exit on any vuln.
           scan-args: |-
             --recursive
             --skip-git
+            --all-packages
             ./
 
   scorecard:
@@ -111,8 +114,8 @@ jobs:
       - name: bun audit
         run: |
           if bun audit --help >/dev/null 2>&1; then
-            # Fail on high/critical only; moderate esbuild (dev tooling) is tracked separately.
-            bun audit --audit-level=high
+            # Strict SCA: fail on low+ (every known advisory).
+            bun audit --audit-level=low
           else
             echo "::notice::bun audit not available in this Bun version — skipping"
           fi

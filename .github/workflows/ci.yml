@@ -105,7 +105,8 @@ jobs:
             echo "::notice::SNYK_TOKEN not set — skipping. Create a free Snyk account at https://app.snyk.io and add the API token as repo secret SNYK_TOKEN."
             exit 0
           fi
-          snyk test --all-projects --severity-threshold=high
+          # Strict SCA: fail on low+ severity across all workspace projects.
+          snyk test --all-projects --severity-threshold=low --fail-on=all
 
       - name: Snyk Code (SAST)
         env:
@@ -114,7 +115,7 @@ jobs:
           if [ -z "$SNYK_TOKEN" ]; then
             exit 0
           fi
-          snyk code test --severity-threshold=high
+          snyk code test --severity-threshold=low
 
       - name: Snyk monitor (main only)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'

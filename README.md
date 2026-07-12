@@ -36,19 +36,21 @@ CI runs on push/PR via `.github/workflows/ci.yml` plus dedicated free security w
 
 ### Free security scanning (GitHub + OSS)
 
-| Scanner | Workflow / config | Secret needed? |
-|---------|-------------------|----------------|
-| **Dependabot** updates | [`.github/dependabot.yml`](./.github/dependabot.yml) | No (enable Dependabot alerts in repo Settings → Code security) |
-| **CodeQL** | [`.github/workflows/codeql.yml`](./.github/workflows/codeql.yml) | No (public repos) |
-| **Dependency Review** | [`.github/workflows/dependency-review.yml`](./.github/workflows/dependency-review.yml) | No (PRs; free on public repos) |
-| **Gitleaks** (secrets) | [`.github/workflows/security-scans.yml`](./.github/workflows/security-scans.yml) | No |
-| **Trivy** (FS vulns) | same | No |
-| **OSV Scanner** | same | No |
-| **OpenSSF Scorecard** | same | No |
-| **Semgrep** (SAST) | same | No |
-| **Bun audit** | same | No |
-| **Snyk** | [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) | `SNYK_TOKEN` (optional) |
-| **SonarCloud** | same | `SONAR_TOKEN` (optional) |
+SCA policy is **strict**: dependency scanners fail on **low+** severity (and Trivy also fails unfixed advisories). License gates deny copyleft/SSPL/BUSL and only allow MIT/Apache/BSD-family (plus PostgreSQL).
+
+| Scanner | Workflow / config | Secret needed? | SCA strictness |
+|---------|-------------------|----------------|----------------|
+| **Dependabot** updates | [`.github/dependabot.yml`](./.github/dependabot.yml) | No (enable Dependabot alerts in repo Settings → Code security) | PR updates |
+| **CodeQL** | [`.github/workflows/codeql.yml`](./.github/workflows/codeql.yml) | No (public repos) | SAST |
+| **Dependency Review** | [`.github/workflows/dependency-review.yml`](./.github/workflows/dependency-review.yml) | No (PRs; free on public repos) | fail-on-severity: **low** |
+| **Gitleaks** (secrets) | [`.github/workflows/security-scans.yml`](./.github/workflows/security-scans.yml) | No | secrets |
+| **Trivy** (FS vulns) | same | No | CRITICAL→LOW, fail unfixed |
+| **OSV Scanner** | same | No | any vuln fails |
+| **OpenSSF Scorecard** | same | No | supply-chain |
+| **Semgrep** (SAST) | same | No | ERROR+ |
+| **Bun audit** | same | No | `--audit-level=low` |
+| **Snyk** | [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) | `SNYK_TOKEN` (optional) | `--severity-threshold=low` |
+| **SonarCloud** | same | `SONAR_TOKEN` (optional) | quality/SAST |
 
 Also turn on (repo **Settings → Code security and analysis**, free for public repos):
 
@@ -65,8 +67,7 @@ CI includes a free-tier [Snyk](https://snyk.io) job for dependency and code scan
 3. In GitHub: **Settings → Secrets and variables → Actions → New repository secret**
 4. Name: `SNYK_TOKEN`, value: your token.
 
-Until the secret is set, the Snyk job skips cleanly. With the token present, scans fail the job on **high** (or worse) severity findings. Pushes to `main` also run `snyk monitor` so the project stays visible in the Snyk dashboard.
-
+Until the secret is set, the Snyk job skips cleanly. With the token present, scans fail the job on **low** (or worse) severity findings (`--fail-on=all`). Pushes to `main` also run `snyk monitor` so the project stays visible in the Snyk dashboard.
 ### Free SonarCloud (optional)
 
 CI includes a free [SonarCloud](https://sonarcloud.io) (Sonar) job for code quality and security analysis. To enable it:

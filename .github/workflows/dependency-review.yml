@@ -22,9 +22,11 @@ jobs:
       - name: Dependency Review
         uses: actions/dependency-review-action@da24556b548a50705dd671f47852072ea4c105d9 # v4.7.1
         with:
-          fail-on-severity: high
-          # Align with repo license hard rule (MIT / Apache-2.0 / PostgreSQL only).
-          deny-licenses: GPL-2.0, GPL-3.0, AGPL-1.0, AGPL-3.0, SSPL-1.0, BUSL-1.1
+          # Strict SCA: block any introduced advisory severity, including low.
+          fail-on-severity: low
+          fail-on-scopes: runtime,development
+          # Allowlist only (mutually exclusive with deny-licenses).
+          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, CC0-1.0, PostgreSQL, BlueOak-1.0.0, Python-2.0, Zlib
           show-openssf-scorecard: true
-          warn-on-openssf-scorecard-level: 3
-          comment-summary-in-pr: on-failure
+          warn-on-openssf-scorecard-level: 5
+          comment-summary-in-pr: always

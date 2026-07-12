@@ -3,7 +3,11 @@
   "private": true,
   "version": "0.2.0",
   "type": "module",
-  "workspaces": ["app", "server", "packages/*"],
+  "workspaces": [
+    "app",
+    "server",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "bun run scripts/dev.ts",
     "build": "bun run --filter app build && bun run --filter server build",
@@ -26,20 +30,23 @@
     "db:restore": "bun run scripts/db-restore.ts"
   },
   "devDependencies": {
-    "@eslint/js": "^9.28.0",
+    "@eslint/js": "^9.39.5",
     "@types/bun": "latest",
-    "eslint": "^9.28.0",
+    "eslint": "^9.39.5",
     "eslint-plugin-react-hooks": "^5.2.0",
-    "eslint-plugin-react-refresh": "^0.4.20",
-    "globals": "^16.2.0",
-    "prettier": "^3.5.3",
-    "@playwright/test": "^1.52.0",
-    "typescript": "^5.8.3",
-    "typescript-eslint": "^8.34.0"
+    "eslint-plugin-react-refresh": "^0.4.26",
+    "globals": "^16.5.0",
+    "prettier": "^3.9.5",
+    "@playwright/test": "^1.61.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.63.0"
   },
   "dependencies": {
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
     "happy-dom": "^20.10.6"
+  },
+  "overrides": {
+    "esbuild": ">=0.25.0"
   }
 }
