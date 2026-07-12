@@ -87,7 +87,15 @@ Open Cowork is reachable from **chat**, not only the Cowork panel:
 - Progress uses pre-generated `taskId` (never `pending`).
 - Slash `/cowork goal` preserves args from the menu/Enter path.
 - Cancel emits tool result + clears stuck ToolCallCards; abort toast is
-  “cancelled” not “finished”.
+  "cancelled" not "finished".
 - Tool result exposes `status` (lifecycle) + `statusJson` + `parentSessionId`.
-- GUI-only Open Cowork 3.3.x still cannot run headless — setup returns
+- GUI-only Open Cowork 3.3.x still cannot run headless ? setup returns
   `COWORK_HEADLESS_UNSUPPORTED` with build-from-source guidance.
+- `delegate_to_cowork` forwards the chat `AbortSignal` into `runCoworkTask`
+  and streams `hermes.cowork.progress` via `onEvent` + `chat-progress.ts`.
+
+## Slice C ? chat UI for hermes.cowork.progress (shipped 2026-07-12)
+
+- Dispatcher handles `hermes.cowork.progress` and attaches lines to the active
+  `delegate_to_cowork` ToolCallCard (live delta + committed phase lines).
+- `ToolCallCard` renders an "Open Cowork progress" section with `aria-live`.

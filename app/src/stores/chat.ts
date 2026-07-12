@@ -32,8 +32,10 @@ export interface ToolCallState {
   result?: unknown
   status: ToolCallStatus
   messageId?: string
-  /** Live Open Cowork progress line (hermes.cowork.progress). */
-  progress?: string
+  /** Committed Open Cowork progress lines (from hermes.cowork.progress). */
+  progressLines?: string[]
+  /** In-flight throttled text delta (replaced until a non-delta phase). */
+  progressLive?: string | null
 }
 
 export interface RunStep {

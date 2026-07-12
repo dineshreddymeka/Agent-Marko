@@ -27,12 +27,14 @@ import type {
   HermesSkillLearnedPayload,
   HermesTitlePayload,
 } from '@hermes/shared'
+import { HermesCustomEvents } from '@hermes/shared'
 import { useAgentStateStore } from '@app/stores/agentState'
 import { useChatStore } from '@app/stores/chat'
 import { useSessionsStore } from '@app/stores/sessions'
 import { useUiStore } from '@app/stores/ui'
 import { processA2UIMessage } from '@app/lib/a2ui/processor'
 import { executeFrontendTool, isFrontendTool } from '@app/lib/agui/frontend-tools'
+import { mergeCoworkProgress } from '@app/lib/cowork-progress'
 import { generateId } from '@app/lib/utils'
 import type { ChatMessage } from '@app/stores/chat'
 import type { AgentState } from '@app/types/hermes'
@@ -349,36 +351,41 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
           toolName: payload.toolName,
           args: (payload.args ?? {}) as Record<string, unknown>,
         })
-      } else if (name === 'hermes.cowork.progress') {
-        const payload = value as HermesCoworkProgressPayload & { line?: string }
-        const line =
-          (typeof payload.line === 'string' && payload.line.trim()) ||
-          payload.text?.trim() ||
-          (payload.phase === 'tool' && payload.tool
-            ? `Running ${payload.tool}…`
-            : payload.phase === 'started'
-              ? `Open Cowork started (${payload.taskId})`
-              : payload.phase === 'ended'
-                ? `Open Cowork finished (${payload.taskId})`
-                : payload.phase === 'error'
-                  ? payload.text || 'Open Cowork error'
-                  : '')
-        if (line) {
-          const toolCalls = chat.toolCalls
-          const executing = Object.values(toolCalls).find(
+      } else if (
+        name === HermesCustomEvents.COWORK_PROGRESS ||
+        name === 'hermes.cowork.progress'
+      ) {
+        const payload = value as HermesCoworkProgressPayload
+        if (!payload || typeof payload.taskId !== 'string') break
+        const toolCalls = chat.toolCalls
+        const active =
+          Object.values(toolCalls).find(
             (tc) =>
               tc.name === 'delegate_to_cowork' &&
-              (tc.status === 'executing' ||
-                tc.status === 'pending' ||
-                tc.status === 'streaming-args'),
+              ['pending', 'streaming-args', 'executing'].includes(tc.status),
+          ) ??
+          Object.values(toolCalls)
+            .filter((tc) => tc.name === 'delegate_to_cowork')
+            .at(-1)
+        if (active) {
+          const merged = mergeCoworkProgress(
+            {
+              progressLines: active.progressLines ?? [],
+              progressLive: active.progressLive ?? null,
+            },
+            payload,
           )
-          if (executing) {
-            const nextProgress =
-              payload.phase === 'delta' && executing.progress
-                ? `${executing.progress}${line}`.slice(-800)
-                : line.slice(0, 800)
-            chat.upsertToolCall(executing.id, { progress: nextProgress })
-          }
+          chat.upsertToolCall(active.id, {
+            progressLines: merged.progressLines,
+            progressLive: merged.progressLive,
+            // Keep the card in a live state while Cowork is still working.
+            status:
+              payload.phase === 'ended' || payload.phase === 'error'
+                ? active.status
+                : active.status === 'done'
+                  ? 'executing'
+                  : active.status,
+          })
         }
         if (payload.phase === 'ended' && payload.ok !== false) {
           ui.addToast({
@@ -387,6 +394,7 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
             variant: 'success',
           })
         } else if (payload.phase === 'error') {
+          chat.setStage('tool', 'delegate_to_cowork')
           const aborted = /abort/i.test(payload.text ?? '')
           ui.addToast({
             title: aborted ? 'Open Cowork cancelled' : 'Open Cowork failed',

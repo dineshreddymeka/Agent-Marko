@@ -180,37 +180,50 @@ describe('agui dispatcher Phase 4 events', () => {
     )
     expect(useChatStore.getState().pendingApproval?.toolName).toBe('run_shell')
   })
-
-  test('hermes.cowork.progress updates executing delegate_to_cowork tool card', () => {
-    useChatStore.getState().upsertToolCall('tc1', {
-      id: 'tc1',
+  test('hermes.cowork.progress attaches lines to delegate_to_cowork tool card', () => {
+    useChatStore.getState().upsertToolCall('tc-cowork', {
+      id: 'tc-cowork',
       name: 'delegate_to_cowork',
-      args: '{}',
+      args: '{"instruction":"deck"}',
       status: 'executing',
     })
     dispatchAguiEvent(
       {
         type: EventType.CUSTOM,
         name: 'hermes.cowork.progress',
-        value: {
-          taskId: 't-1',
-          phase: 'started',
-          line: 'Open Cowork started (t-1)',
-        },
+        value: { taskId: 't-1', phase: 'started' },
       } as never,
       's1',
     )
-    expect(useChatStore.getState().toolCalls.tc1?.progress).toContain('t-1')
-
     dispatchAguiEvent(
       {
         type: EventType.CUSTOM,
         name: 'hermes.cowork.progress',
-        value: { taskId: 't-1', phase: 'delta', text: 'hello' },
+        value: { taskId: 't-1', phase: 'delta', text: 'Drafting…' },
       } as never,
       's1',
     )
-    expect(useChatStore.getState().toolCalls.tc1?.progress).toContain('hello')
+    dispatchAguiEvent(
+      {
+        type: EventType.CUSTOM,
+        name: 'hermes.cowork.progress',
+        value: { taskId: 't-1', phase: 'delta', text: 'Drafting slides…' },
+      } as never,
+      's1',
+    )
+    dispatchAguiEvent(
+      {
+        type: EventType.CUSTOM,
+        name: 'hermes.cowork.progress',
+        value: { taskId: 't-1', phase: 'tool', tool: 'bash' },
+      } as never,
+      's1',
+    )
+    const tc = useChatStore.getState().toolCalls['tc-cowork']
+    expect(tc?.progressLines?.[0]).toContain('started')
+    expect(tc?.progressLines?.some((l) => l.includes('Drafting slides'))).toBe(true)
+    expect(tc?.progressLines?.some((l) => l.includes('bash'))).toBe(true)
+    expect(tc?.progressLive).toBeNull()
   })
 
   test('hermes.cowork.progress abort toast is attention not success', () => {
