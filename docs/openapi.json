@@ -3,7 +3,7 @@
   "info": {
     "title": "Open Jarvis API",
     "version": "0.1.0",
-    "description": "REST + AG-UI HTTP contract for Open Jarvis (Hermes UI).\n\n**Auth:** Prefer the better-auth session cookie, or `Authorization: Bearer hrm_*` API tokens.\nWhen `HOST=127.0.0.1` and `ALLOW_SIGNUP=false`, localhost requests bypass auth (dev-only).\n\n**Database:** Resource schemas include `x-db-table` pointing at Drizzle tables in `server/src/db/schema.ts`.\nSee `docs/DATABASE-DESIGN.md` for the ERD/narrative companion.\n\nInteractive docs: `/api/docs` · Machine-readable: `/api/openapi.json`."
+    "description": "REST + AG-UI HTTP contract for Open Jarvis (Hermes UI).\n\n**Auth:** Prefer the better-auth session cookie, or `Authorization: Bearer hrm_*` API tokens.\nWhen `HOST=127.0.0.1` and `ALLOW_SIGNUP=false`, localhost requests bypass auth (dev-only).\n\n**Database:** Resource schemas include `x-db-table` pointing at Drizzle tables in `server/src/db/schema.ts`.\nSee `docs/DATABASE-DESIGN.md` for the ERD/narrative companion.\n\n**System maintenance cron:** On boot the scheduler seeds **DB Consistency**, **Bug Bounty**, and **Status Auto-Approve** every 2 minutes. They check then auto-fix / auto-approve pending issues; results land in `cron_runs.detail.maintenance`. See `GET /api/cron/system`.\n\nInteractive docs: `/api/docs` · Machine-readable: `/api/openapi.json`."
   },
   "servers": [
     {
@@ -30,7 +30,7 @@
     },
     {
       "name": "Cron",
-      "description": "Scheduled agent jobs"
+      "description": "Scheduled tasks. Built-in **DB Consistency**, **Bug Bounty**, and **Status Auto-Approve** jobs seed on boot at `*/2 * * * *` (check → auto-fix / auto-approve) (`GET /api/cron/system`)."
     },
     {
       "name": "Cowork",
@@ -1884,7 +1884,8 @@
         "tags": [
           "Cron"
         ],
-        "summary": "List cron jobs",
+        "summary": "List scheduled tasks (cron jobs)",
+        "description": "Includes user jobs and built-in system maintenance jobs (DB Consistency, Bug Bounty, Status Auto-Approve) when seeded.",
         "security": [
           {
             "SessionCookie": []
@@ -1898,14 +1899,16 @@
             "name": "mcpServerId",
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "format": "uuid"
             }
           },
           {
             "name": "skillId",
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "format": "uuid"
             }
           }
         ],
@@ -1959,7 +1962,7 @@
         "tags": [
           "Cron"
         ],
-        "summary": "Create cron job",
+        "summary": "Create scheduled task",
         "security": [
           {
             "SessionCookie": []
@@ -1984,23 +1987,102 @@
                     "type": "string"
                   },
                   "schedule": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Cron expression. System maintenance jobs use `*/2 * * * *` (every 2 minutes).",
+                    "example": "*/2 * * * *"
                   },
                   "prompt": {
                     "type": "string"
                   },
                   "profileId": {
-                    "type": "string"
+                    "type": "string",
+                    "format": "uuid"
                   },
                   "enabled": {
                     "type": "boolean"
                   },
                   "timezone": {
-                    "type": "string"
+                    "type": "string",
+                    "default": "UTC"
                   },
                   "workflow": {
                     "type": "object",
-                    "additionalProperties": true
+                    "description": "Enterprise workflow config. When `systemKind` is set, the scheduler runs a deterministic maintenance handler (check + auto-fix) instead of an LLM turn.",
+                    "properties": {
+                      "version": {
+                        "type": "integer",
+                        "enum": [
+                          1
+                        ]
+                      },
+                      "intent": {
+                        "type": "string"
+                      },
+                      "systemKind": {
+                        "type": "string",
+                        "enum": [
+                          "db-consistency",
+                          "bug-bounty",
+                          "status-auto-approve"
+                        ],
+                        "description": "Built-in maintenance runner. `db-consistency` repairs orphans/stale bindings/stuck runs and prunes old events. `bug-bounty` runs security hygiene and auto-fixes safe issues. `status-auto-approve` ensures autoApproveAll is on and auto-approves any pending HITL approvals."
+                      },
+                      "timezone": {
+                        "type": "string",
+                        "default": "UTC"
+                      },
+                      "mcpServerIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      },
+                      "skillIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      },
+                      "profileId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "headlessAutoApprove": {
+                        "type": "boolean",
+                        "default": false
+                      },
+                      "retry": {
+                        "type": "object",
+                        "properties": {
+                          "maxAttempts": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10
+                          },
+                          "backoffSec": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 3600
+                          }
+                        }
+                      },
+                      "steps": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      },
+                      "ui": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    }
                   }
                 }
               }
@@ -2014,6 +2096,65 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CronJob"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cron/system": {
+      "get": {
+        "tags": [
+          "Cron"
+        ],
+        "summary": "List built-in system maintenance jobs",
+        "description": "Returns the catalog and live rows for **DB Consistency**, **Bug Bounty**, and **Status Auto-Approve**. All are seeded on server boot at `*/2 * * * *` (check → auto-fix / auto-approve). Use `POST /api/cron/{id}/run` to trigger immediately.",
+        "security": [
+          {
+            "SessionCookie": []
+          },
+          {
+            "BearerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CronSystemJobsResponse"
                 }
               }
             }
@@ -2073,7 +2214,8 @@
                 "type": "object",
                 "properties": {
                   "schedule": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "*/2 * * * *"
                   }
                 }
               }
@@ -2151,13 +2293,15 @@
                   "mcpServerIds": {
                     "type": "array",
                     "items": {
-                      "type": "string"
+                      "type": "string",
+                      "format": "uuid"
                     }
                   },
                   "skillIds": {
                     "type": "array",
                     "items": {
-                      "type": "string"
+                      "type": "string",
+                      "format": "uuid"
                     }
                   }
                 }
@@ -2214,7 +2358,7 @@
         "tags": [
           "Cron"
         ],
-        "summary": "Update cron job",
+        "summary": "Update scheduled task",
         "security": [
           {
             "SessionCookie": []
@@ -2240,7 +2384,109 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "schedule": {
+                    "type": "string"
+                  },
+                  "prompt": {
+                    "type": "string"
+                  },
+                  "profileId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "timezone": {
+                    "type": "string"
+                  },
+                  "workflow": {
+                    "type": "object",
+                    "description": "Enterprise workflow config. When `systemKind` is set, the scheduler runs a deterministic maintenance handler (check + auto-fix) instead of an LLM turn.",
+                    "properties": {
+                      "version": {
+                        "type": "integer",
+                        "enum": [
+                          1
+                        ]
+                      },
+                      "intent": {
+                        "type": "string"
+                      },
+                      "systemKind": {
+                        "type": "string",
+                        "enum": [
+                          "db-consistency",
+                          "bug-bounty",
+                          "status-auto-approve"
+                        ],
+                        "description": "Built-in maintenance runner. `db-consistency` repairs orphans/stale bindings/stuck runs and prunes old events. `bug-bounty` runs security hygiene and auto-fixes safe issues. `status-auto-approve` ensures autoApproveAll is on and auto-approves any pending HITL approvals."
+                      },
+                      "timezone": {
+                        "type": "string",
+                        "default": "UTC"
+                      },
+                      "mcpServerIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      },
+                      "skillIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      },
+                      "profileId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "headlessAutoApprove": {
+                        "type": "boolean",
+                        "default": false
+                      },
+                      "retry": {
+                        "type": "object",
+                        "properties": {
+                          "maxAttempts": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10
+                          },
+                          "backoffSec": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 3600
+                          }
+                        }
+                      },
+                      "steps": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      },
+                      "ui": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
               }
             }
           }
@@ -2292,7 +2538,8 @@
         "tags": [
           "Cron"
         ],
-        "summary": "Delete cron job",
+        "summary": "Delete scheduled task",
+        "description": "Deleting built-in system jobs is allowed; they are re-seeded on next server boot.",
         "security": [
           {
             "SessionCookie": []
@@ -2362,6 +2609,7 @@
           "Cron"
         ],
         "summary": "List cron runs",
+        "description": "For system jobs, `detail.maintenance` includes check/fix findings.",
         "security": [
           {
             "SessionCookie": []
@@ -2433,7 +2681,8 @@
         "tags": [
           "Cron"
         ],
-        "summary": "Run cron job now",
+        "summary": "Run scheduled task now",
+        "description": "Forces an immediate run. System maintenance jobs (`systemKind`) execute check-and-fix handlers instead of an LLM turn.",
         "security": [
           {
             "SessionCookie": []
@@ -2465,7 +2714,8 @@
                       "type": "boolean"
                     },
                     "jobId": {
-                      "type": "string"
+                      "type": "string",
+                      "format": "uuid"
                     }
                   }
                 }
@@ -6961,6 +7211,88 @@
           "createdAt"
         ]
       },
+      "CronWorkflow": {
+        "type": "object",
+        "description": "Enterprise workflow config persisted in `cron_jobs.workflow`. `systemKind` selects a deterministic maintenance runner.",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "enum": [
+              1
+            ]
+          },
+          "intent": {
+            "type": "string"
+          },
+          "systemKind": {
+            "type": "string",
+            "enum": [
+              "db-consistency",
+              "bug-bounty",
+              "status-auto-approve"
+            ],
+            "description": "When set, cron fires a check-and-fix / status auto-approve maintenance handler instead of an LLM agent turn."
+          },
+          "timezone": {
+            "type": "string",
+            "default": "UTC"
+          },
+          "mcpServerIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "skillIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "profileId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "headlessAutoApprove": {
+            "type": "boolean",
+            "default": false
+          },
+          "retry": {
+            "type": "object",
+            "properties": {
+              "maxAttempts": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10
+              },
+              "backoffSec": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 3600
+              }
+            }
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "ui": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "version"
+        ]
+      },
       "CronJob": {
         "x-db-table": "cron_jobs",
         "type": "object",
@@ -6973,7 +7305,9 @@
             "type": "string"
           },
           "schedule": {
-            "type": "string"
+            "type": "string",
+            "description": "Cron expression. Built-in system jobs use `*/2 * * * *`.",
+            "example": "*/2 * * * *"
           },
           "prompt": {
             "type": "string"
@@ -7005,19 +7339,20 @@
             "type": "string"
           },
           "workflow": {
-            "type": "object",
-            "additionalProperties": true
+            "$ref": "#/components/schemas/CronWorkflow"
           },
           "mcpServerIds": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "format": "uuid"
             }
           },
           "skillIds": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "format": "uuid"
             }
           },
           "updatedAt": {
@@ -7061,7 +7396,12 @@
             "format": "date-time"
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "running",
+              "completed",
+              "failed"
+            ]
           },
           "sessionId": {
             "type": [
@@ -7080,7 +7420,8 @@
               "object",
               "null"
             ],
-            "additionalProperties": true
+            "additionalProperties": true,
+            "description": "Per-run snapshot. System jobs include `detail.maintenance` with `{ kind, ok, checked, fixed, findings }`."
           }
         },
         "required": [
@@ -7088,6 +7429,97 @@
           "jobId",
           "startedAt",
           "status"
+        ]
+      },
+      "CronMaintenanceResult": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "db-consistency",
+              "bug-bounty",
+              "status-auto-approve"
+            ]
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "checked": {
+            "type": "integer"
+          },
+          "fixed": {
+            "type": "integer"
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "detail": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "kind",
+          "ok",
+          "checked",
+          "fixed",
+          "findings"
+        ]
+      },
+      "CronSystemJobsResponse": {
+        "type": "object",
+        "properties": {
+          "schedule": {
+            "type": "string",
+            "description": "Default schedule for built-in maintenance jobs",
+            "example": "*/2 * * * *"
+          },
+          "catalog": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "db-consistency",
+                    "bug-bounty",
+                    "status-auto-approve"
+                  ]
+                },
+                "schedule": {
+                  "type": "string"
+                },
+                "prompt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "kind",
+                "schedule",
+                "prompt"
+              ]
+            }
+          },
+          "jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CronJob"
+            }
+          }
+        },
+        "required": [
+          "schedule",
+          "catalog",
+          "jobs"
         ]
       },
       "CronValidateResponse": {

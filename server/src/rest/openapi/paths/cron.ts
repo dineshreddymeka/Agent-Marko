@@ -1,14 +1,46 @@
 import { bearerOrSession, errorResponses, jsonBody, jsonContent, ref } from '../helpers'
 
+const cronWorkflowSchema = {
+  type: 'object',
+  description:
+    'Enterprise workflow config. When `systemKind` is set, the scheduler runs a deterministic maintenance handler (check + auto-fix) instead of an LLM turn.',
+  properties: {
+    version: { type: 'integer', enum: [1] },
+    intent: { type: 'string' },
+    systemKind: {
+      type: 'string',
+      enum: ['db-consistency', 'bug-bounty', 'status-auto-approve'],
+      description:
+        'Built-in maintenance runner. `db-consistency` repairs orphans/stale bindings/stuck runs and prunes old events. `bug-bounty` runs security hygiene and auto-fixes safe issues. `status-auto-approve` ensures autoApproveAll is on and auto-approves any pending HITL approvals.',
+    },
+    timezone: { type: 'string', default: 'UTC' },
+    mcpServerIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
+    skillIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
+    profileId: { type: ['string', 'null'], format: 'uuid' },
+    headlessAutoApprove: { type: 'boolean', default: false },
+    retry: {
+      type: 'object',
+      properties: {
+        maxAttempts: { type: 'integer', minimum: 1, maximum: 10 },
+        backoffSec: { type: 'integer', minimum: 0, maximum: 3600 },
+      },
+    },
+    steps: { type: 'array', items: { type: 'object', additionalProperties: true } },
+    ui: { type: 'object', additionalProperties: true },
+  },
+}
+
 export const cronPaths = {
   '/api/cron': {
     get: {
       tags: ['Cron'],
-      summary: 'List cron jobs',
+      summary: 'List scheduled tasks (cron jobs)',
+      description:
+        'Includes user jobs and built-in system maintenance jobs (DB Consistency, Bug Bounty, Status Auto-Approve) when seeded.',
       security: bearerOrSession,
       parameters: [
-        { name: 'mcpServerId', in: 'query', schema: { type: 'string' } },
-        { name: 'skillId', in: 'query', schema: { type: 'string' } },
+        { name: 'mcpServerId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+        { name: 'skillId', in: 'query', schema: { type: 'string', format: 'uuid' } },
       ],
       responses: {
         '200': jsonContent({ type: 'array', items: ref('CronJob') }),
@@ -17,22 +49,42 @@ export const cronPaths = {
     },
     post: {
       tags: ['Cron'],
-      summary: 'Create cron job',
+      summary: 'Create scheduled task',
       security: bearerOrSession,
       requestBody: jsonBody({
         type: 'object',
         required: ['name', 'schedule', 'prompt'],
         properties: {
           name: { type: 'string' },
-          schedule: { type: 'string' },
+          schedule: {
+            type: 'string',
+            description: 'Cron expression. System maintenance jobs use `*/2 * * * *` (every 2 minutes).',
+            example: '*/2 * * * *',
+          },
           prompt: { type: 'string' },
-          profileId: { type: 'string' },
+          profileId: { type: 'string', format: 'uuid' },
           enabled: { type: 'boolean' },
-          timezone: { type: 'string' },
-          workflow: { type: 'object', additionalProperties: true },
+          timezone: { type: 'string', default: 'UTC' },
+          workflow: cronWorkflowSchema,
         },
       }),
       responses: { '201': jsonContent(ref('CronJob')), ...errorResponses() },
+    },
+  },
+  '/api/cron/system': {
+    get: {
+      tags: ['Cron'],
+      summary: 'List built-in system maintenance jobs',
+      description: [
+        'Returns the catalog and live rows for **DB Consistency**, **Bug Bounty**, and **Status Auto-Approve**.',
+        'All are seeded on server boot at `*/2 * * * *` (check → auto-fix / auto-approve).',
+        'Use `POST /api/cron/{id}/run` to trigger immediately.',
+      ].join(' '),
+      security: bearerOrSession,
+      responses: {
+        '200': jsonContent(ref('CronSystemJobsResponse')),
+        ...errorResponses(),
+      },
     },
   },
   '/api/cron/validate': {
@@ -42,7 +94,7 @@ export const cronPaths = {
       security: bearerOrSession,
       requestBody: jsonBody({
         type: 'object',
-        properties: { schedule: { type: 'string' } },
+        properties: { schedule: { type: 'string', example: '*/2 * * * *' } },
       }),
       responses: { '200': jsonContent(ref('CronValidateResponse')), ...errorResponses() },
     },
@@ -56,8 +108,8 @@ export const cronPaths = {
         type: 'object',
         properties: {
           schedule: { type: 'string' },
-          mcpServerIds: { type: 'array', items: { type: 'string' } },
-          skillIds: { type: 'array', items: { type: 'string' } },
+          mcpServerIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
+          skillIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
         },
       }),
       responses: { '200': jsonContent(ref('CronWizardPreviewResponse')), ...errorResponses() },
@@ -66,15 +118,27 @@ export const cronPaths = {
   '/api/cron/{id}': {
     patch: {
       tags: ['Cron'],
-      summary: 'Update cron job',
+      summary: 'Update scheduled task',
       security: bearerOrSession,
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-      requestBody: jsonBody({ type: 'object', additionalProperties: true }),
+      requestBody: jsonBody({
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          schedule: { type: 'string' },
+          prompt: { type: 'string' },
+          profileId: { type: ['string', 'null'], format: 'uuid' },
+          enabled: { type: 'boolean' },
+          timezone: { type: 'string' },
+          workflow: cronWorkflowSchema,
+        },
+      }),
       responses: { '200': jsonContent(ref('CronJob')), ...errorResponses() },
     },
     delete: {
       tags: ['Cron'],
-      summary: 'Delete cron job',
+      summary: 'Delete scheduled task',
+      description: 'Deleting built-in system jobs is allowed; they are re-seeded on next server boot.',
       security: bearerOrSession,
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       responses: { '200': jsonContent(ref('DeletedResponse')), ...errorResponses() },
@@ -84,6 +148,7 @@ export const cronPaths = {
     get: {
       tags: ['Cron'],
       summary: 'List cron runs',
+      description: 'For system jobs, `detail.maintenance` includes check/fix findings.',
       security: bearerOrSession,
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       responses: {
@@ -95,13 +160,15 @@ export const cronPaths = {
   '/api/cron/{id}/run': {
     post: {
       tags: ['Cron'],
-      summary: 'Run cron job now',
+      summary: 'Run scheduled task now',
+      description:
+        'Forces an immediate run. System maintenance jobs (`systemKind`) execute check-and-fix handlers instead of an LLM turn.',
       security: bearerOrSession,
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
       responses: {
         '200': jsonContent({
           type: 'object',
-          properties: { ok: { type: 'boolean' }, jobId: { type: 'string' } },
+          properties: { ok: { type: 'boolean' }, jobId: { type: 'string', format: 'uuid' } },
         }),
         ...errorResponses(),
       },
