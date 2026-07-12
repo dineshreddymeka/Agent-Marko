@@ -159,7 +159,12 @@ describe('resolveCoworkExe / resolveCoworkWorkspace', () => {
 
   test('workspace from OPEN_COWORK_WORKSPACE or default', () => {
     delete process.env.OPEN_COWORK_WORKSPACE
-    expect(resolveCoworkWorkspace()).toBe('C:/Users/dines/BMC/jarvis-cowork-workspace')
+    const def = resolveCoworkWorkspace()
+    if (process.platform === 'win32') {
+      expect(def).toBe('C:/Users/dines/BMC/jarvis-cowork-workspace')
+    } else {
+      expect(def).toMatch(/cowork-workspace$/)
+    }
     process.env.OPEN_COWORK_WORKSPACE = 'D:/ws'
     expect(resolveCoworkWorkspace()).toBe('D:/ws')
     expect(resolveCoworkWorkspace('E:/override')).toBe('E:/override')

@@ -1,6 +1,7 @@
 import { spawn as defaultSpawn, type ChildProcess } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { logger } from '../log'
 import { JsonlLineBuffer, parseJsonlLine } from './jsonl'
 import type {
@@ -14,7 +15,10 @@ import type {
 
 const log = logger.child({ component: 'cowork' })
 
-const DEFAULT_WORKSPACE = 'C:/Users/dines/BMC/jarvis-cowork-workspace'
+const DEFAULT_WORKSPACE =
+  process.platform === 'win32'
+    ? 'C:/Users/dines/BMC/jarvis-cowork-workspace'
+    : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../cowork-workspace')
 const STDERR_KEEP = 200
 const READY_TIMEOUT_MS = 60_000
 const DEFAULT_TASK_TIMEOUT_MS = 15 * 60_000

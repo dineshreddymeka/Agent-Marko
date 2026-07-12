@@ -1,6 +1,6 @@
-import { createHash, randomUUID } from 'node:crypto'
-import { readdir, readFile, stat } from 'node:fs/promises'
-import { basename, extname, join, relative, resolve } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { readFile, stat } from 'node:fs/promises'
+import { basename, resolve } from 'node:path'
 import { config } from '../config'
 import { indexerRepo, type IndexJob, type IndexSourceType } from '../db/repositories/indexer'
 import { messagesRepo } from '../db/repositories/messages'
@@ -8,85 +8,35 @@ import { memoryRepo } from '../db/repositories/memory'
 import { skillsRepo } from '../db/repositories/skills'
 import { sessionsRepo } from '../db/repositories/sessions'
 import { cronRepo } from '../db/repositories/cron'
+import { runEventsRepo } from '../db/repositories/run_events'
+import { restoreCoworkTaskFromEvents, coworkSessionTitle } from '../cowork/persist'
+import { resolveCoworkWorkspace } from '../cowork/client'
 import { toWorkspaceRelative } from '../fs/path-jail'
 import { logger } from '../log'
 import { chunkText } from './chunker'
-import { embedBatchLocal } from './local-embeddings'
+import { hashText } from './hashing'
+import { isIgnoredPath, isTextFile, normalizeIndexPath } from './ignore'
+import { embedBatchLocal, isLocalEmbeddingEndpoint } from './local-embeddings'
+
+export { isIgnoredPath } from './ignore'
+export { scanWorkspace } from './scanner'
 
 const log = logger.child({ component: 'indexer' })
 
-const TEXT_EXTENSIONS = new Set([
-  '.ts',
-  '.tsx',
-  '.js',
-  '.jsx',
-  '.json',
-  '.md',
-  '.txt',
-  '.sql',
-  '.css',
-  '.html',
-  '.yml',
-  '.yaml',
-  '.toml',
-  '.py',
-  '.rs',
-  '.go',
-  '.java',
-  '.c',
-  '.cpp',
-  '.h',
-  '.cs',
-  '.sh',
-  '.ps1',
-  '.gitignore',
-  '.dockerfile',
-])
-
-const IGNORED_SEGMENTS = new Set([
-  '.git',
-  'node_modules',
-  'dist',
-  'build',
-  '.next',
-  '.turbo',
-  'coverage',
-  '.cache',
-])
-
-/** Explicit secret filenames only — avoid matching keyboard.tsx / monkey.ts. */
-const SECRET_NAME_RE =
-  /(^|[/.\\])(\.env(\..+)?|.*\.pem|id_rsa|id_ed25519|credentials\.json|secrets?\.(json|ya?ml|toml|env)|.*\.key)$/i
-const MAX_FILE_BYTES = 512 * 1024
+function maxFileBytes(): number {
+  return config.INDEXER_MAX_FILE_BYTES
+}
 
 function workspaceRoot(): string {
   return resolve(config.WORKSPACE_ROOT)
 }
 
 function normalizePath(path: string): string {
-  return path.replace(/\\/g, '/').replace(/^\.\//, '')
+  return normalizeIndexPath(path)
 }
 
 function workspaceRelative(path: string): string {
   return normalizePath(toWorkspaceRelative(workspaceRoot(), path))
-}
-
-function hashText(text: string): string {
-  return createHash('sha256').update(text).digest('hex')
-}
-
-export function isIgnoredPath(rel: string): boolean {
-  const normalized = normalizePath(rel)
-  const parts = normalized.split('/')
-  if (parts.some((part) => IGNORED_SEGMENTS.has(part))) return true
-  if (SECRET_NAME_RE.test(normalized)) return true
-  return false
-}
-
-function isTextFile(rel: string): boolean {
-  const lower = rel.toLowerCase()
-  const ext = extname(lower)
-  return TEXT_EXTENSIONS.has(ext) || TEXT_EXTENSIONS.has(basename(lower))
 }
 
 function metadataWithJob(job?: Partial<IndexJob>): Record<string, unknown> {
@@ -275,7 +225,7 @@ export async function queueWorkspaceDelete(
 }
 
 export async function queueRuntimeRecord(
-  sourceType: Extract<IndexSourceType, 'message' | 'memory' | 'skill' | 'session' | 'cron_job'>,
+  sourceType: Exclude<IndexSourceType, 'workspace_file'>,
   sourceId: string,
   opts?: { sessionId?: string | null; runId?: string | null; userId?: string | null; priority?: number },
 ): Promise<void> {
@@ -303,7 +253,7 @@ export async function queueRuntimeRecord(
 }
 
 export async function queueRuntimeDelete(
-  sourceType: Extract<IndexSourceType, 'message' | 'memory' | 'skill' | 'session' | 'cron_job'>,
+  sourceType: Exclude<IndexSourceType, 'workspace_file'>,
   sourceId: string,
 ): Promise<void> {
   await indexerRepo.enqueueJob({
@@ -312,33 +262,6 @@ export async function queueRuntimeDelete(
     operation: 'delete',
     priority: 5,
   })
-}
-
-export async function scanWorkspace(): Promise<number> {
-  const root = workspaceRoot()
-  let queued = 0
-  async function walk(dir: string): Promise<void> {
-    const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
-    for (const entry of entries) {
-      const full = join(dir, entry.name)
-      const rel = normalizePath(relative(root, full))
-      if (isIgnoredPath(rel)) continue
-      if (entry.isDirectory()) {
-        await walk(full)
-      } else if (entry.isFile() && isTextFile(rel)) {
-        await indexerRepo.enqueueJob({
-          sourceType: 'workspace_file',
-          sourceId: rel,
-          operation: 'upsert',
-          priority: -10,
-        })
-        queued++
-      }
-    }
-  }
-  await walk(root)
-  log.info('Workspace scan queued index jobs', { queued, root })
-  return queued
 }
 
 function isNotFound(err: unknown): boolean {
@@ -369,7 +292,7 @@ export async function indexWorkspaceFile(job: IndexJob): Promise<void> {
     }
     throw err
   }
-  if (!info.isFile() || info.size > MAX_FILE_BYTES) {
+  if (!info.isFile() || info.size > maxFileBytes()) {
     await indexerRepo.markDeleted('workspace_file', rel)
     return
   }
@@ -490,7 +413,241 @@ export async function indexRuntimeRecord(job: IndexJob): Promise<void> {
         skillIds: cron.skillIds,
       },
     })
+    return
   }
+
+  if (job.sourceType === 'run_event') {
+    const event = await runEventsRepo.getById(job.sourceId)
+    if (!event) return indexerRepo.markDeleted('run_event', job.sourceId)
+    const payloadText =
+      typeof event.payload === 'string'
+        ? event.payload
+        : JSON.stringify(event.payload ?? {}, null, 0)
+    await upsertTextDocument({
+      sourceType: 'run_event',
+      sourceId: event.id,
+      title: `${event.eventType} #${event.seq}`,
+      text: [event.eventType, `seq=${event.seq}`, payloadText.slice(0, 12_000)].join('\n'),
+      sessionId: event.sessionId,
+      runId: event.runId,
+      actionId: job.actionId ?? event.id,
+      tags: ['runtime', 'run_event', event.eventType],
+      metadata: { ...metadataWithJob(job), seq: event.seq, eventType: event.eventType },
+    })
+    return
+  }
+
+  if (job.sourceType === 'cowork_task') {
+    const taskId = job.sourceId
+    const sessions = await sessionsRepo.search(coworkSessionTitle(taskId), 5)
+    const session =
+      sessions.find((s) => s.title === coworkSessionTitle(taskId)) ??
+      (job.sessionId ? await sessionsRepo.getById(job.sessionId) : null)
+    if (!session) return indexerRepo.markDeleted('cowork_task', taskId)
+    const events = await runEventsRepo.listBySession(session.id)
+    const task = restoreCoworkTaskFromEvents(taskId, session.id, events)
+    const text = [
+      task.goal ?? '',
+      task.deliverableType ?? '',
+      task.status,
+      task.summary ?? '',
+      task.error ?? '',
+      ...(task.files ?? []),
+      ...(task.inputFiles ?? []),
+    ]
+      .filter(Boolean)
+      .join('\n')
+    await upsertTextDocument({
+      sourceType: 'cowork_task',
+      sourceId: taskId,
+      title: coworkSessionTitle(taskId),
+      text: text || coworkSessionTitle(taskId),
+      sessionId: session.id,
+      runId: job.runId,
+      actionId: job.actionId ?? taskId,
+      tags: ['runtime', 'cowork_task', task.status],
+      metadata: {
+        ...metadataWithJob(job),
+        deliverableType: task.deliverableType,
+        status: task.status,
+        files: task.files,
+      },
+    })
+  }
+}
+
+/** High-churn AG-UI stream deltas — skip indexing to protect the queue. */
+const SKIP_RUN_EVENT_INDEX = new Set([
+  'TEXT_MESSAGE_CONTENT',
+  'TOOL_CALL_ARGS',
+  'REASONING_MESSAGE_CONTENT',
+  'RAW',
+])
+
+export function shouldIndexRunEventType(eventType: string): boolean {
+  if (!eventType) return false
+  if (SKIP_RUN_EVENT_INDEX.has(eventType)) return false
+  if (eventType.endsWith('_CONTENT') || eventType.endsWith('_ARGS')) return false
+  return true
+}
+
+export async function queueRunEventIndex(event: {
+  id: string
+  eventType: string
+  sessionId: string | null
+  runId: string
+}): Promise<void> {
+  if (!shouldIndexRunEventType(event.eventType)) return
+  await queueRuntimeRecord('run_event', event.id, {
+    sessionId: event.sessionId,
+    runId: event.runId,
+    priority: -5,
+  })
+}
+
+export async function queueCoworkTaskIndex(
+  taskId: string,
+  opts?: { sessionId?: string | null; runId?: string | null; files?: string[] },
+): Promise<void> {
+  await queueRuntimeRecord('cowork_task', taskId, {
+    sessionId: opts?.sessionId ?? null,
+    runId: opts?.runId ?? null,
+    priority: 1,
+  })
+  for (const file of opts?.files ?? []) {
+    const normalized = normalizePath(file)
+    const name = basename(normalized)
+    if (!name || name === 'status.json') continue
+    const sourceId = normalized.includes('/')
+      ? normalized.startsWith('outbox/')
+        ? normalized
+        : normalizePath(`outbox/${taskId}/${name}`)
+      : normalizePath(`outbox/${taskId}/${name}`)
+    await queueRuntimeRecord('office_artifact', sourceId, {
+      sessionId: opts?.sessionId ?? null,
+      runId: opts?.runId ?? null,
+      priority: 0,
+    })
+  }
+}
+
+async function indexOfficeArtifact(job: IndexJob): Promise<void> {
+  const rel = normalizePath(job.sourceId)
+  const coworkRoot = resolveCoworkWorkspace()
+  let full: string
+  try {
+    full = resolve(coworkRoot, rel)
+    // Ensure jail relative to cowork workspace.
+    toWorkspaceRelative(coworkRoot, rel)
+  } catch {
+    await indexerRepo.markDeleted('office_artifact', rel)
+    return
+  }
+
+  let info: Awaited<ReturnType<typeof stat>>
+  try {
+    info = await stat(full)
+  } catch (err) {
+    if (isNotFound(err)) {
+      await indexerRepo.markDeleted('office_artifact', rel)
+      return
+    }
+    throw err
+  }
+  if (!info.isFile()) {
+    await indexerRepo.markDeleted('office_artifact', rel)
+    return
+  }
+  if (info.size > maxFileBytes()) {
+    // Still index metadata for oversized deliverables.
+    const taskId = rel.split('/')[1] ?? null
+    await upsertTextDocument({
+      sourceType: 'office_artifact',
+      sourceId: rel,
+      path: rel,
+      title: basename(rel),
+      text: [`Office deliverable: ${basename(rel)}`, taskId ? `taskId=${taskId}` : '', `size=${info.size}`]
+        .filter(Boolean)
+        .join('\n'),
+      sizeBytes: info.size,
+      mtime: info.mtime,
+      sessionId: job.sessionId,
+      runId: job.runId,
+      actionId: job.actionId,
+      tags: ['office', 'artifact', 'cowork'],
+      metadata: { ...metadataWithJob(job), taskId, binaryOrLarge: true },
+    })
+    return
+  }
+
+  let buf: Buffer
+  try {
+    buf = await readFile(full)
+  } catch (err) {
+    if (isNotFound(err)) {
+      await indexerRepo.markDeleted('office_artifact', rel)
+      return
+    }
+    throw err
+  }
+
+  const taskId = rel.split('/')[1] ?? null
+  const isBinary = buf.includes(0) || !isTextFile(rel)
+  const text = isBinary
+    ? [`Office deliverable: ${basename(rel)}`, taskId ? `taskId=${taskId}` : '', `bytes=${info.size}`]
+        .filter(Boolean)
+        .join('\n')
+    : buf.toString('utf8')
+
+  await upsertTextDocument({
+    sourceType: 'office_artifact',
+    sourceId: rel,
+    path: rel,
+    title: basename(rel),
+    text,
+    mimeType: isBinary ? 'application/octet-stream' : 'text/plain',
+    sizeBytes: info.size,
+    mtime: info.mtime,
+    sessionId: job.sessionId,
+    runId: job.runId,
+    actionId: job.actionId,
+    tags: ['office', 'artifact', 'cowork'],
+    metadata: { ...metadataWithJob(job), taskId, binary: isBinary },
+  })
+}
+
+export async function backfillPendingEmbeddings(limit = 8): Promise<number> {
+  if (!isLocalEmbeddingEndpoint()) return 0
+  const docs = await indexerRepo.listEmbeddingPendingDocuments(limit)
+  let updated = 0
+  for (const doc of docs) {
+    const chunks = await indexerRepo.listChunksForDocument(doc.id)
+    const needing = chunks.filter((c) => !c.hasEmbedding && c.content.trim())
+    if (needing.length === 0) {
+      await indexerRepo.applyChunkEmbeddings(doc.id, [])
+      updated++
+      continue
+    }
+    try {
+      const vectors = await embedBatchLocal(needing.map((c) => c.content))
+      await indexerRepo.applyChunkEmbeddings(
+        doc.id,
+        needing.map((chunk, i) => ({
+          chunkId: chunk.id,
+          embedding: vectors[i]!,
+        })),
+      )
+      updated++
+    } catch (err) {
+      log.warn('Embedding backfill failed', {
+        documentId: doc.id,
+        sourceType: doc.sourceType,
+        sourceId: doc.sourceId,
+        error: String(err),
+      })
+    }
+  }
+  return updated
 }
 
 export async function processIndexJob(job: IndexJob): Promise<void> {
@@ -500,6 +657,8 @@ export async function processIndexJob(job: IndexJob): Promise<void> {
   }
   if (job.sourceType === 'workspace_file') {
     await indexWorkspaceFile(job)
+  } else if (job.sourceType === 'office_artifact') {
+    await indexOfficeArtifact(job)
   } else {
     await indexRuntimeRecord(job)
   }

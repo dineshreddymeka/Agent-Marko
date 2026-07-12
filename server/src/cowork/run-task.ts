@@ -446,10 +446,6 @@ export async function runCoworkTask(
     input.exe ?? settingsExe ?? (config.OPEN_COWORK_EXE || undefined),
   )
 
-  // #region agent log
-  fetch('http://127.0.0.1:7558/ingest/116e8c96-2587-4b63-b987-35d26879e605',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1e21c7'},body:JSON.stringify({sessionId:'1e21c7',runId:'post-fix',hypothesisId:'J',location:'run-task.ts:exe',message:'resolved exe before spawn',data:{taskId,exe,exeExists:coworkExeExists(exe),headlessSupported:coworkExeSupportsHeadless(exe),workspace},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
-
   if (
     !input.createClient &&
     coworkExeExists(exe) &&

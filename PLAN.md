@@ -68,6 +68,13 @@ Rebuild the agent WebUI as **Open Jarvis** from the Hermes WebUI concept (vanill
 - [x] Chrome tools: `chrome_open` / `chrome_navigate` / `chrome_get_content` / `chrome_screenshot` (mock-friendly)
 - [x] MCP mocks: `bun run mcp:mock` + `bun run mcp:mock-chrome` (`document_outline`, chrome tab tools)
 - [x] Cowork document real-world scenarios: `bun run test:cowork` / `verify:cowork`
+- [x] **Live internet verification (cloud VM):** `bun run test:live-net` + `bun run verify:live`
+  - Real egress: example.com, DuckDuckGo Instant Answer, JSONPlaceholder, MDN, Wikipedia, RFC Editor
+  - Live `HERMES_CHROME_MOCK=0` chrome_open → get_content → screenshot chain
+  - API smoke: health/db, OpenAPI 72 paths, docs, system cron ×3, auto-approve lock, AG-UI SSE, indexer status
+  - Cowork suite **114 pass**; DB integration on local Postgres (`HERMES_INTEGRATION_TEST=1`, port 5432|5433)
+  - System crons manually triggered OK (DB Consistency / Bug Bounty / Status Auto-Approve)
+  - Gap: live `Open Cowork.exe` still Windows-only (exe missing on Linux cloud agents)
 
 ### Pending phases (all auto-approval + 5-min status cron)
 

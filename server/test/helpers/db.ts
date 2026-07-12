@@ -4,7 +4,7 @@ import { runMigrations } from '../../src/db/migrate'
 export async function isIntegrationEnabled(): Promise<boolean> {
   if (process.env.HERMES_INTEGRATION_TEST !== '1') return false
   const url = process.env.DATABASE_URL ?? ''
-  if (!/^postgres(ql)?:\/\/.+@(localhost|127\.0\.0\.1):5433\//.test(url)) {
+  if (!/^postgres(ql)?:\/\/.+@(localhost|127\.0\.0\.1):(5432|5433)\//.test(url)) {
     return false
   }
   try {

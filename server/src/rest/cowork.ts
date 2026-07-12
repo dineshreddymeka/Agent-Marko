@@ -254,9 +254,6 @@ export async function handleCowork(req: Request, path: string): Promise<Response
       )
     }
     if (!setup.headlessSupported) {
-      // #region agent log
-      fetch('http://127.0.0.1:7558/ingest/116e8c96-2587-4b63-b987-35d26879e605',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1e21c7'},body:JSON.stringify({sessionId:'1e21c7',runId:'post-fix',hypothesisId:'J',location:'cowork.ts:POST/tasks',message:'reject headless unsupported',data:{exe:setup.exe,exeExists:setup.exeExists,headlessSupported:false},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       return jsonResponse(
         {
           error: setup.hint,

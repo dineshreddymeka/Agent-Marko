@@ -10,6 +10,9 @@ export type IndexSourceType =
   | 'skill'
   | 'session'
   | 'cron_job'
+  | 'run_event'
+  | 'cowork_task'
+  | 'office_artifact'
 
 export type IndexOperation = 'upsert' | 'delete'
 

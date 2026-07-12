@@ -2,7 +2,11 @@
   "name": "hermes-ui",
   "private": true,
   "type": "module",
-  "workspaces": ["app", "server", "packages/*"],
+  "workspaces": [
+    "app",
+    "server",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "bun run scripts/dev.ts",
     "build": "bun run --filter app build && bun run --filter server build",
@@ -34,7 +38,9 @@
     "mcp:mock": "bun run server/scripts/mock-mcp-http.ts",
     "mcp:mock-chrome": "bun run server/scripts/mock-mcp-chrome.ts",
     "test:cowork": "bun test server/test/cowork-*.test.ts server/test/document-*.test.ts server/test/chrome-tools.test.ts server/test/cowork-document-scenarios.test.ts app/test/cowork-work.test.ts",
-    "verify:cowork": "bun run test:cowork"
+    "verify:cowork": "bun run test:cowork",
+    "verify:live": "bun run scripts/verify-live-features.ts",
+    "test:live-net": "HERMES_LIVE_NET=1 HERMES_CHROME_MOCK=0 bun test server/test/live-internet.test.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.28.0",
