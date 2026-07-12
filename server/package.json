@@ -10,13 +10,13 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@ag-ui/core": "^0.0.39",
+    "@ag-ui/core": "^0.0.57",
     "@hermes/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "better-auth": "^1.2.8",
-    "croner": "^9.0.0",
+    "croner": "^10.0.1",
     "drizzle-kit": "^0.31.1",
     "drizzle-orm": "^0.45.2",
-    "zod": "^3.25.56"
+    "zod": "^4.4.3"
   }
 }
