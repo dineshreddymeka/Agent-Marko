@@ -50,6 +50,31 @@ This file is **auto-updated** by the Cursor project hook (`.cursor/hooks/plan-tr
 ## Work log
 
 <!-- HOOK:WORK-LOG:START -->
+### 2026-07-12T15:07:38.622Z — agent stop
+
+- **Status:** completed
+- **Loop count:** 0
+- **Author tracker:** Dinesh Reddy Meka / auto-hook
+- **SoT:** `BMC-backend/HERMES-UI-PLAN.md`
+- **Files touched:**
+- `server/test/cowork.integration.test.ts`
+- `packages/shared/test/shared.test.ts`
+
+
+### 2026-07-12T15:03:39.629Z — agent stop
+
+- **Status:** completed
+- **Loop count:** 0
+- **Author tracker:** Dinesh Reddy Meka / auto-hook
+- **SoT:** `BMC-backend/HERMES-UI-PLAN.md`
+- **Files touched:**
+- `server/test/cowork-client.test.ts`
+- `.data/open-cowork-stub/open-cowork-stub.mjs`
+- `server/src/agent/tools/delegate_to_cowork.ts`
+- `server/src/agent/tools/index_search.ts`
+- `.gitignore`
+
+
 ### 2026-07-12T05:54:40.790Z — agent stop
 
 - **Status:** completed
