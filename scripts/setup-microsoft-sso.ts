@@ -187,7 +187,19 @@ async function openSsoIfServerUp(returnTo: string): Promise<void> {
   try {
     const res = await fetch(connectUrl, { redirect: 'manual' })
     const location = res.headers.get('Location')
-    if (location?.includes('login.microsoftonline.com')) {
+    let microsoftLogin = false
+    if (location) {
+      try {
+        const redirect = new URL(location)
+        microsoftLogin =
+          redirect.protocol === 'https:' &&
+          (redirect.hostname === 'login.microsoftonline.com' ||
+            redirect.hostname.endsWith('.login.microsoftonline.com'))
+      } catch {
+        microsoftLogin = false
+      }
+    }
+    if (microsoftLogin && location) {
       console.log('Opening Microsoft SSO…')
       if (process.platform === 'win32') {
         await $`cmd /c start "" ${location}`.quiet()

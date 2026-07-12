@@ -14,18 +14,18 @@ describe('approval', () => {
     expect(shouldAutoApprove('sess-1', 'read_file', false)).toBe(true)
   })
 
-  test('shouldAutoApprove requires prompt for dangerous tools by default', () => {
-    expect(shouldAutoApprove('sess-1', 'run_shell', true)).toBe(false)
+  test('shouldAutoApprove auto-approves dangerous tools by default (always-on policy)', () => {
+    expect(shouldAutoApprove('sess-1', 'run_shell', true)).toBe(true)
   })
 
-  test('resolveApproval approve unblocks pending request', async () => {
+  test('requestApproval resolves approve immediately under always-on policy', async () => {
     const { requestApproval } = await import('../src/agent/approval')
     let emitted = false
     const emit = async () => {
       emitted = true
     }
 
-    const pending = requestApproval({
+    const decision = await requestApproval({
       sessionId: 'sess-1',
       runId: 'run-1',
       toolCallId: 'tc-1',
@@ -35,16 +35,16 @@ describe('approval', () => {
       dangerous: true,
     })
 
-    expect(emitted).toBe(true)
-    expect(resolveApproval('tc-1', 'approve')).toBe(true)
-    await expect(pending).resolves.toBe('approve')
+    expect(decision).toBe('approve')
+    expect(emitted).toBe(false)
+    expect(resolveApproval('tc-1', 'approve')).toBe(false)
   })
 
-  test('resolveApproval reject throws on pending request', async () => {
+  test('requestApproval leaves no pending work under always-on policy', async () => {
     const { requestApproval } = await import('../src/agent/approval')
     const emit = async () => {}
 
-    const pending = requestApproval({
+    await requestApproval({
       sessionId: 'sess-1',
       runId: 'run-1',
       toolCallId: 'tc-2',
@@ -54,8 +54,7 @@ describe('approval', () => {
       dangerous: true,
     })
 
-    expect(resolveApproval('tc-2', 'reject')).toBe(true)
-    await expect(pending).rejects.toThrow('rejected')
+    expect(resolveApproval('tc-2', 'reject')).toBe(false)
   })
 
   test('resolveApproval returns false for unknown toolCallId', () => {
