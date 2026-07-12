@@ -1,14 +1,17 @@
 import {
-  Brain,
-  Clock,
+  Briefcase,
+  Building2,
   FolderOpen,
   MessageSquare,
+  Plug,
   Settings,
   Sparkles,
 } from 'lucide-react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import type { PanelName } from '@app/stores/ui'
+import { isPanelRouteActive, panelNavLabel } from '@app/lib/labels'
 
+/** Primary mobile nav — same order as IconRail primary. */
 const items: {
   id: PanelName | 'chat'
   icon: typeof MessageSquare
@@ -17,9 +20,10 @@ const items: {
 }[] = [
   { id: 'chat', icon: MessageSquare, label: 'Chat', to: '/' },
   { id: 'workspace', icon: FolderOpen, label: 'Workspace', to: '/panel/workspace' },
+  { id: 'office', icon: Building2, label: 'Office', to: '/panel/office' },
+  { id: 'cron', icon: Briefcase, label: panelNavLabel('cron'), to: '/panel/cowork' },
+  { id: 'connections', icon: Plug, label: panelNavLabel('connections'), to: '/panel/connections' },
   { id: 'skills', icon: Sparkles, label: 'Skills', to: '/panel/skills' },
-  { id: 'memory', icon: Brain, label: 'Memory', to: '/panel/memory' },
-  { id: 'cron', icon: Clock, label: 'Cron', to: '/panel/cron' },
   { id: 'settings', icon: Settings, label: 'Settings', to: '/panel/settings' },
 ]
 
@@ -35,7 +39,7 @@ export function MobileNav() {
         const active =
           id === 'chat'
             ? pathname === '/' || pathname.startsWith('/session/')
-            : pathname === to
+            : isPanelRouteActive(id as PanelName, pathname)
 
         return (
           <Link

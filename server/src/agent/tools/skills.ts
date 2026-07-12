@@ -1,39 +1,27 @@
-import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
-import { config } from '../../config'
-import { skillsRepo } from '../../db/repositories/skills'
-import { queueEmbedding } from '../../vector/indexer'
 import { registerTool } from './registry'
+import { saveLearnedSkill } from '../../skills/learn'
+import { skillsRepo } from '../../db/repositories/skills'
 
 registerTool({
   name: 'skill_save',
-  description: 'Save a learned skill as SKILL.md',
+  description: 'Save a learned skill as SKILL.md under skills/learned/',
   parameters: {
     type: 'object',
     properties: {
       name: { type: 'string' },
       description: { type: 'string' },
       body: { type: 'string' },
+      triggers: { type: 'array', items: { type: 'string' } },
     },
     required: ['name', 'body'],
   },
   async execute(args) {
-    const name = String(args.name)
-    const body = String(args.body)
-    const description = args.description ? String(args.description) : null
-    const dir = join(config.SKILLS_DIR, 'learned', name)
-    await mkdir(dir, { recursive: true })
-    const md = `---\nname: ${name}\ndescription: ${description ?? ''}\n---\n\n${body}\n`
-    await writeFile(join(dir, 'SKILL.md'), md, 'utf8')
-    const skill = await skillsRepo.upsert({
-      name,
-      description,
-      bodyMd: md,
-      source: 'learned',
-      path: dir,
+    return saveLearnedSkill({
+      name: String(args.name),
+      body: String(args.body),
+      description: args.description ? String(args.description) : null,
+      triggers: Array.isArray(args.triggers) ? args.triggers.map(String) : null,
     })
-    queueEmbedding('skill', skill.id, md)
-    return skill
   },
 })
 

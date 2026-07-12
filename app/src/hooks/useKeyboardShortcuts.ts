@@ -3,18 +3,22 @@ import { useUiStore } from '@app/stores/ui'
 import { useChatStore } from '@app/stores/chat'
 import { cancelRun } from '@app/lib/agui/client'
 
+/**
+ * Global shortcuts. Reads store via getState() so the listener stays stable
+ * and never misses Ctrl/Cmd+K due to a stale open flag.
+ */
 export function useKeyboardShortcuts() {
   const toggleSidebar = useUiStore((s) => s.toggleSidebar)
   const toggleRightPanel = useUiStore((s) => s.toggleRightPanel)
-  const setCommandPaletteOpen = useUiStore((s) => s.setCommandPaletteOpen)
-  const commandPaletteOpen = useUiStore((s) => s.commandPaletteOpen)
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const mod = e.ctrlKey || e.metaKey
+      const { commandPaletteOpen, setCommandPaletteOpen } = useUiStore.getState()
 
       if (mod && e.key.toLowerCase() === 'k') {
         e.preventDefault()
+        e.stopPropagation()
         setCommandPaletteOpen(!commandPaletteOpen)
         return
       }
@@ -32,9 +36,18 @@ export function useKeyboardShortcuts() {
 
       if (!mod) return
 
-      if (e.key === 'b' && !e.altKey) {
+      if (e.key.toLowerCase() === 'n' && !e.altKey && !e.shiftKey) {
         e.preventDefault()
-        toggleSidebar()
+        window.dispatchEvent(new CustomEvent('open-jarvis:new-session'))
+        return
+      }
+
+      if (e.key === 'b' && !e.altKey) {
+        const path = window.location.pathname
+        if (path === '/' || path.startsWith('/session/')) {
+          e.preventDefault()
+          toggleSidebar()
+        }
         return
       }
 
@@ -44,12 +57,8 @@ export function useKeyboardShortcuts() {
       }
     }
 
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [
-    toggleSidebar,
-    toggleRightPanel,
-    setCommandPaletteOpen,
-    commandPaletteOpen,
-  ])
+    // Capture phase: beat Chromium/page handlers that may swallow Ctrl+K.
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [toggleSidebar, toggleRightPanel])
 }

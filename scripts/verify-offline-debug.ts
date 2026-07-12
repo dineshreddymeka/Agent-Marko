@@ -6,12 +6,30 @@ import { resolveBunExecutable } from './lib/bun-path'
 const root = import.meta.dir.replace(/[/\\]scripts$/, '')
 const bun = resolveBunExecutable()
 
+async function waitForHealth(port: number, timeoutMs = 20_000): Promise<{ ok: boolean; db?: boolean }> {
+  const deadline = Date.now() + timeoutMs
+  let lastErr: unknown
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/api/health`)
+      if (res.ok) {
+        const body = (await res.json()) as { ok?: boolean; db?: boolean }
+        if (body.ok) return { ok: true, db: body.db }
+      }
+    } catch (err) {
+      lastErr = err
+    }
+    await Bun.sleep(300)
+  }
+  throw new Error(`Health check timed out on :${port}${lastErr ? ` (${String(lastErr)})` : ''}`)
+}
+
 async function main() {
   const port = Number(process.env.HERMES_VERIFY_PORT ?? 3096)
   const serverProc = Bun.spawn([bun, 'src/index.ts'], {
     cwd: join(root, 'server'),
     stdout: 'pipe',
-    stderr: 'inherit',
+    stderr: 'pipe',
     env: {
       ...process.env,
       HERMES_MOCK_LLM: '1',
@@ -25,13 +43,9 @@ async function main() {
   })
 
   try {
-    const deadline = Date.now() + 20_000
-    while (Date.now() < deadline) {
-      try {
-        if ((await fetch(`http://127.0.0.1:${port}/api/health`)).ok) break
-      } catch {
-        await Bun.sleep(300)
-      }
+    const health = await waitForHealth(port)
+    if (health.db === true) {
+      throw new Error('Expected offline health with db !== true (unreachable DATABASE_URL)')
     }
 
     const runId = randomUUID()
@@ -49,15 +63,24 @@ async function main() {
       }),
     })
     if (!aguiRes.ok) throw new Error(`POST /agui failed: ${aguiRes.status}`)
-    await aguiRes.text()
+    const sseBody = await aguiRes.text()
+    if (!sseBody.includes('RUN_STARTED') || !sseBody.includes('RUN_FINISHED')) {
+      throw new Error('AG-UI stream missing RUN_STARTED / RUN_FINISHED')
+    }
 
     const runsRes = await fetch(`http://127.0.0.1:${port}/api/debug/runs`)
-    const runsBody = (await runsRes.json()) as { runs?: unknown[]; source?: string }
+    const runsBody = (await runsRes.json()) as {
+      runs?: Array<{ runId?: string }>
+      source?: string
+    }
     if (!runsRes.ok || runsBody.source !== 'memory') {
-      throw new Error('Expected in-memory debug runs list')
+      throw new Error(`Expected in-memory debug runs list, got source=${runsBody.source}`)
     }
     if (!runsBody.runs?.length) {
       throw new Error('No buffered runs returned')
+    }
+    if (!runsBody.runs.some((r) => r.runId === runId)) {
+      throw new Error(`Buffered runs missing runId ${runId}`)
     }
 
     const eventsRes = await fetch(`http://127.0.0.1:${port}/api/debug/runs/${runId}/events`)
@@ -69,6 +92,8 @@ async function main() {
     console.log('Offline debug verify: complete')
   } finally {
     serverProc.kill()
+    // Give the port a moment to release (avoids flaky re-runs on the same port)
+    await Bun.sleep(200)
   }
 }
 

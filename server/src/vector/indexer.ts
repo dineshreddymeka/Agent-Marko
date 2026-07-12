@@ -20,6 +20,9 @@ export function queueDepth(): number {
 export function queueEmbedding(kind: IndexJob['kind'], id: string, text: string): void {
   if (!text.trim()) return
   queue.push({ kind, id, text })
+  void import('../indexer/service')
+    .then(({ queueRuntimeRecord }) => queueRuntimeRecord(kind, id))
+    .catch(() => undefined)
   void drainQueue()
 }
 

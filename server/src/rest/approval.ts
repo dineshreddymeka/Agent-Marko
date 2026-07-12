@@ -16,18 +16,19 @@ const VALID_DECISIONS = new Set<ApprovalDecision>([
 export async function handleApproval(req: Request, path: string): Promise<Response | null> {
   const parts = path.split('/').filter(Boolean)
 
-  if (req.method === 'GET' && parts.length === 2 && parts[1] === 'config') {
+  // /api/approval/config → parts = ['api','approval','config']
+  if (req.method === 'GET' && parts.length === 3 && parts[2] === 'config') {
     return jsonResponse(getApprovalConfig())
   }
 
-  if (req.method === 'PUT' && parts.length === 2 && parts[1] === 'config') {
+  if (req.method === 'PUT' && parts.length === 3 && parts[2] === 'config') {
     const body = await parseJson<{ autoApproveAll?: boolean; toolWhitelist?: string[] }>(req)
     if (!body) return jsonResponse({ error: 'Invalid JSON' }, 400)
     const config = await updateApprovalConfig(body)
     return jsonResponse(config)
   }
 
-  if (req.method === 'POST' && parts.length === 2 && parts[1] === 'resolve') {
+  if (req.method === 'POST' && parts.length === 3 && parts[2] === 'resolve') {
     const body = await parseJson<{ toolCallId?: string; decision?: string }>(req)
     if (!body?.toolCallId || !body.decision) {
       return jsonResponse({ error: 'toolCallId and decision required' }, 400)

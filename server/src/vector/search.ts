@@ -4,10 +4,30 @@ import { skillsRepo } from '../db/repositories/skills'
 import { embedText } from './embeddings'
 
 export type SearchResult = {
-  kind: 'message' | 'memory' | 'skill'
+  kind:
+    | 'message'
+    | 'memory'
+    | 'skill'
+    | 'session'
+    | 'workspace_file'
+    | 'cron_job'
+    | 'run_event'
+    | 'cowork_task'
+    | 'office_artifact'
   id: string
   snippet: string
   score?: number
+  sessionId?: string
+  runId?: string | null
+  userId?: string | null
+  actionId?: string | null
+  documentId?: string
+  chunkId?: string
+  path?: string | null
+  title?: string | null
+  lineStart?: number | null
+  lineEnd?: number | null
+  sourceType?: string
 }
 
 export async function hybridSearch(query: string, limit = 20): Promise<SearchResult[]> {
@@ -15,7 +35,12 @@ export async function hybridSearch(query: string, limit = 20): Promise<SearchRes
 
   const ftsMessages = await messagesRepo.ftsSearch(query, limit)
   for (const m of ftsMessages) {
-    results.push({ kind: 'message', id: m.id, snippet: m.content.slice(0, 200) })
+    results.push({
+      kind: 'message',
+      id: m.id,
+      snippet: m.content.slice(0, 200),
+      sessionId: m.sessionId,
+    })
   }
 
   try {

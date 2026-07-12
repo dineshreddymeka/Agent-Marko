@@ -49,7 +49,7 @@ export const profilesRepo = {
       .insert(profiles)
       .values({
         name: input.name,
-        systemPrompt: input.systemPrompt ?? 'You are Hermes, a helpful AI assistant.',
+        systemPrompt: input.systemPrompt ?? 'You are Open Jarvis, a helpful AI assistant.',
         model: input.model ?? 'gpt-4o-mini',
         temperature: input.temperature ?? 0.7,
         provider: input.provider ?? 'native',
@@ -74,7 +74,11 @@ export const profilesRepo = {
     }>,
   ): Promise<Profile | null> {
     const db = getDb()
-    const [row] = await db.update(profiles).set(patch).where(eq(profiles.id, id)).returning()
+    const [row] = await db
+      .update(profiles)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(profiles.id, id))
+      .returning()
     return row ? toDto(row) : null
   },
 

@@ -44,5 +44,16 @@ export async function handleProfiles(req: Request, path: string): Promise<Respon
     }
   }
 
+  if (parts.length === 4 && parts[3] === 'default' && req.method === 'POST') {
+    const unavailable = await requireDatabaseOrResponse()
+    if (unavailable) return unavailable
+    const id = parts[2]!
+    const profile = await profilesRepo.getById(id)
+    if (!profile) return jsonResponse({ error: 'Not found' }, 404)
+    const { settingsRepo } = await import('../db/repositories/settings')
+    await settingsRepo.set('default_profile_id', id)
+    return jsonResponse({ defaultProfileId: id, profile })
+  }
+
   return null
 }

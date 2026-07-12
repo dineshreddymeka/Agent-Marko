@@ -1,6 +1,7 @@
 import { resolve } from 'node:path'
 import { config } from '../../config'
 import { ToolError } from '../../errors'
+import { resolveInsideRoot } from '../../fs/path-jail'
 import { registerTool } from './registry'
 
 function workspaceRoot(): string {
@@ -8,12 +9,11 @@ function workspaceRoot(): string {
 }
 
 function jailPath(relative: string): string {
-  const root = workspaceRoot()
-  const full = resolve(root, relative)
-  if (!full.startsWith(root)) {
+  try {
+    return resolveInsideRoot(workspaceRoot(), relative)
+  } catch {
     throw new ToolError('Path escapes workspace root')
   }
-  return full
 }
 
 registerTool({

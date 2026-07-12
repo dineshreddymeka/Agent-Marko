@@ -2,6 +2,8 @@ node_modules/
 dist/
 **/dist/
 .env
+.env.*
+!.env.example
 *.log
 .DS_Store
 data/
@@ -9,7 +11,24 @@ backups/
 workspace/
 .drizzle/
 .tmp/
+.cache/
 .lighthouse-report.json
 test-results/
+playwright-report/
 *.tsbuildinfo
+<<<<<<< HEAD
 coverage
+=======
+
+# Local-only / never ship (Cursor SDK, bridges, ad-hoc inspect)
+# Root-level only — do not ignore server/src/agent/tools/
+/tools/
+.data/
+**/cursor-llm-bridge/
+**/CURSOR-PROVIDER.md
+docs/CURSOR-PROVIDER.md
+scripts/_inspect-hermes-sqlite.ts
+scripts/_inspect-*.ts
+**/@cursor/
+**/*cursor*sdk*
+>>>>>>> origin/main

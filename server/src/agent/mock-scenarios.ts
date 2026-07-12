@@ -27,6 +27,8 @@ function toolTurn(script: MockLlmScript): MockLlmScript {
 
 function doneTurn(message: string): MockLlmScript {
   return {
+    // Second reasoning burst after tool results, mirroring real reasoning models.
+    reasoning: ['Reviewing tool results…'],
     content: [message],
     usage: { promptTokens: 8, completionTokens: 4, totalTokens: 12 },
   }
