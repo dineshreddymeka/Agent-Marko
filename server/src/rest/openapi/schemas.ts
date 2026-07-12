@@ -455,11 +455,21 @@ export const schemas: Record<string, JsonSchema> = {
       configured: { type: 'boolean' },
       exe: { type: 'string' },
       exeExists: { type: 'boolean' },
+      headlessSupported: { type: 'boolean' },
       workspace: { type: 'string' },
       hint: { type: 'string' },
       releasesUrl: { type: 'string' },
       downloadUrl: { type: 'string' },
       code: { type: 'string' },
+      mcpBridge: {
+        type: 'object',
+        properties: {
+          registered: { type: 'boolean' },
+          command: { type: 'string' },
+          configPath: { type: 'string' },
+          hint: { type: 'string' },
+        },
+      },
     },
     required: ['configured', 'exe', 'exeExists', 'workspace', 'hint'],
   },
@@ -515,6 +525,30 @@ export const schemas: Record<string, JsonSchema> = {
         properties: {
           statusJson: { type: ['object', 'null'], additionalProperties: true },
           outboxFiles: { type: 'array', items: { type: 'string' } },
+          progress: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                at: { type: 'string' },
+                message: { type: 'string' },
+                percent: { type: 'number' },
+              },
+              required: ['at', 'message'],
+            },
+          },
+          questions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                question: { type: 'string' },
+                at: { type: 'string' },
+              },
+              required: ['id', 'question', 'at'],
+            },
+          },
         },
       },
     ],

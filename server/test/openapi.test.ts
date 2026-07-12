@@ -51,6 +51,7 @@ export const ENDPOINT_INVENTORY: Array<{ method: string; path: string }> = [
   { method: 'post', path: '/api/cowork/tasks' },
   { method: 'get', path: '/api/cowork/tasks/{taskId}' },
   { method: 'post', path: '/api/cowork/tasks/{taskId}/abort' },
+  { method: 'post', path: '/api/cowork/mcp-bridge/register' },
   // Office
   { method: 'get', path: '/api/office/config' },
   { method: 'get', path: '/api/office/status' },

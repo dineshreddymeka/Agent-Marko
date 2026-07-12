@@ -41,6 +41,27 @@ const activeClients = new Map<
 /** In-memory task records for running/recent jobs (survives until process restart). */
 const taskRecords = new Map<string, CoworkTask>()
 
+/** Mid-task progress reported via the Jarvis MCP bridge (`jarvis_report_progress`). */
+const taskProgress = new Map<string, CoworkTaskProgressEntry[]>()
+
+/** Clarifying questions stored via the Jarvis MCP bridge (`jarvis_ask`). */
+const taskQuestions = new Map<string, CoworkTaskQuestion[]>()
+
+/** Cap per-task progress/question lists so a chatty worker cannot grow unbounded. */
+const BRIDGE_ENTRIES_MAX = 200
+
+export type CoworkTaskProgressEntry = {
+  at: string
+  message: string
+  percent?: number
+}
+
+export type CoworkTaskQuestion = {
+  id: string
+  question: string
+  at: string
+}
+
 export type RunCoworkTaskInput = {
   goal: string
   files?: PackageFileInput[]
@@ -150,6 +171,53 @@ function upsertRecord(partial: CoworkTask): CoworkTask {
 
 export function getCoworkTaskRecord(taskId: string): CoworkTask | undefined {
   return taskRecords.get(taskId)
+}
+
+/**
+ * Append a mid-task progress entry (Jarvis MCP bridge). Works even when the
+ * task record lives in another process — the in-memory list is best-effort;
+ * durable visibility comes from the COWORK_PROGRESS run_event.
+ */
+export function appendCoworkTaskProgress(
+  taskId: string,
+  message: string,
+  percent?: number,
+): CoworkTaskProgressEntry {
+  const entry: CoworkTaskProgressEntry = {
+    at: new Date().toISOString(),
+    message,
+    ...(percent !== undefined ? { percent } : {}),
+  }
+  const list = taskProgress.get(taskId) ?? []
+  list.push(entry)
+  if (list.length > BRIDGE_ENTRIES_MAX) list.splice(0, list.length - BRIDGE_ENTRIES_MAX)
+  taskProgress.set(taskId, list)
+  return entry
+}
+
+export function listCoworkTaskProgress(taskId: string): CoworkTaskProgressEntry[] {
+  return taskProgress.get(taskId) ?? []
+}
+
+/** Store a clarifying question for a task (Jarvis MCP bridge `jarvis_ask`). */
+export function appendCoworkTaskQuestion(
+  taskId: string,
+  question: string,
+): CoworkTaskQuestion {
+  const entry: CoworkTaskQuestion = {
+    id: crypto.randomUUID(),
+    question,
+    at: new Date().toISOString(),
+  }
+  const list = taskQuestions.get(taskId) ?? []
+  list.push(entry)
+  if (list.length > BRIDGE_ENTRIES_MAX) list.splice(0, list.length - BRIDGE_ENTRIES_MAX)
+  taskQuestions.set(taskId, list)
+  return entry
+}
+
+export function listCoworkTaskQuestions(taskId: string): CoworkTaskQuestion[] {
+  return taskQuestions.get(taskId) ?? []
 }
 
 export function listCoworkTaskRecords(): CoworkTask[] {
@@ -696,4 +764,6 @@ export async function startCoworkTaskAsync(
 export function resetCoworkTaskStateForTests(): void {
   activeClients.clear()
   taskRecords.clear()
+  taskProgress.clear()
+  taskQuestions.clear()
 }

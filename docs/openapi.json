@@ -2907,6 +2907,86 @@
         }
       }
     },
+    "/api/cowork/mcp-bridge/register": {
+      "post": {
+        "tags": [
+          "Cowork"
+        ],
+        "summary": "Register the Jarvis MCP bridge in Open Cowork mcp-config.json",
+        "security": [
+          {
+            "SessionCookie": []
+          },
+          {
+            "BearerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "mcpBridge": {
+                      "type": "object",
+                      "properties": {
+                        "registered": {
+                          "type": "boolean"
+                        },
+                        "command": {
+                          "type": "string"
+                        },
+                        "configPath": {
+                          "type": "string"
+                        },
+                        "hint": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/office/config": {
       "get": {
         "tags": [
@@ -7758,6 +7838,9 @@
           "exeExists": {
             "type": "boolean"
           },
+          "headlessSupported": {
+            "type": "boolean"
+          },
           "workspace": {
             "type": "string"
           },
@@ -7772,6 +7855,23 @@
           },
           "code": {
             "type": "string"
+          },
+          "mcpBridge": {
+            "type": "object",
+            "properties": {
+              "registered": {
+                "type": "boolean"
+              },
+              "command": {
+                "type": "string"
+              },
+              "configPath": {
+                "type": "string"
+              },
+              "hint": {
+                "type": "string"
+              }
+            }
           }
         },
         "required": [
@@ -7885,6 +7985,49 @@
                 "type": "array",
                 "items": {
                   "type": "string"
+                }
+              },
+              "progress": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "at": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "percent": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "at",
+                    "message"
+                  ]
+                }
+              },
+              "questions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "question": {
+                      "type": "string"
+                    },
+                    "at": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "question",
+                    "at"
+                  ]
                 }
               }
             }

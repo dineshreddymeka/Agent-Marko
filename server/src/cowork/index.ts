@@ -44,10 +44,14 @@ export type {
 
 export {
   abortCoworkTask,
+  appendCoworkTaskProgress,
+  appendCoworkTaskQuestion,
   buildGoalWithDeliverable,
   deliverablePromptAppendix,
   getActiveCoworkClient,
   getCoworkTaskRecord,
+  listCoworkTaskProgress,
+  listCoworkTaskQuestions,
   listCoworkTaskRecords,
   listOutboxFiles,
   readStatusJson,
@@ -55,4 +59,44 @@ export {
   runCoworkTask,
   startCoworkTaskAsync,
 } from './run-task'
-export type { RunCoworkTaskInput, RunCoworkTaskResult } from './run-task'
+export type {
+  CoworkTaskProgressEntry,
+  CoworkTaskQuestion,
+  RunCoworkTaskInput,
+  RunCoworkTaskResult,
+} from './run-task'
+
+export {
+  bridgeEntriesFromEvents,
+  COWORK_PROGRESS_EVENT,
+  COWORK_QUESTION_EVENT,
+  createJarvisMcpBridgeServer,
+  handleAsk,
+  handleFetchContext,
+  handleReportProgress,
+  startJarvisMcpBridge,
+} from './mcp-bridge'
+export type {
+  AskInput,
+  AskResult,
+  FetchContextInput,
+  FetchContextResult,
+  ReportProgressInput,
+  ReportProgressResult,
+} from './mcp-bridge'
+
+export {
+  buildJarvisBridgeEntry,
+  coworkMcpConfigPath,
+  getJarvisMcpBridgeStatus,
+  JARVIS_MCP_BRIDGE_ID,
+  jarvisBridgeScriptPath,
+  readCoworkMcpConfig,
+  registerJarvisMcpBridge,
+  resolveBunForBridge,
+} from './mcp-register'
+export type {
+  CoworkMcpConfig,
+  CoworkMcpServerEntry,
+  JarvisMcpBridgeStatus,
+} from './mcp-register'

@@ -59,4 +59,29 @@ export const coworkPaths = {
       responses: { '200': jsonContent(ref('AbortCoworkTaskResponse')), ...errorResponses() },
     },
   },
+  '/api/cowork/mcp-bridge/register': {
+    post: {
+      tags: ['Cowork'],
+      summary: 'Register the Jarvis MCP bridge in Open Cowork mcp-config.json',
+      security: bearerOrSession,
+      responses: {
+        '200': jsonContent({
+          type: 'object',
+          properties: {
+            ok: { type: 'boolean' },
+            mcpBridge: {
+              type: 'object',
+              properties: {
+                registered: { type: 'boolean' },
+                command: { type: 'string' },
+                configPath: { type: 'string' },
+                hint: { type: 'string' },
+              },
+            },
+          },
+        }),
+        ...errorResponses(),
+      },
+    },
+  },
 }

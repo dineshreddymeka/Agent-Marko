@@ -34,6 +34,7 @@
     "db:prune-events": "bun run scripts/db-prune-events.ts",
     "office:sso-setup": "bun run scripts/setup-microsoft-sso.ts",
     "office:sso-open": "bun run scripts/setup-microsoft-sso.ts -- --open",
+    "cowork:mcp-bridge": "bun run server/src/cowork/mcp-bridge-main.ts",
     "openapi:export": "bun run scripts/openapi-export.ts",
     "sca:check": "bun run scripts/sca-check.ts"
   },
