@@ -19,6 +19,14 @@ bun run dev
 - API health: http://127.0.0.1:3001/api/health
 - API docs (Scalar): http://127.0.0.1:3001/api/docs · OpenAPI JSON: `/api/openapi.json` (`bun run openapi:export` writes `docs/openapi.json`)
 
+### Windows laptop: stay awake + check every 2 minutes
+
+On **your Windows laptop**, after `bun run dev` is up, double-click:
+
+`scripts\keep-awake-windows.cmd`
+
+That keeps the laptop from sleeping and every **2 minutes** pings health + system cron (DB Consistency / Bug Bounty / Status Auto-Approve). Leave the window open; Ctrl+C / close when you want normal sleep again.
+
 ## Verify matrix
 
 | Command | What it proves |

@@ -138,22 +138,26 @@ Rebuild the agent WebUI as **Open Jarvis** from the Hermes WebUI concept (vanill
 | Bug Bounty | `bug-bounty` | Path-jail / XSS hygiene check → safe autofix; stale bindings / stuck runs |
 | Status Auto-Approve | `status-auto-approve` | Force `autoApproveAll` on; auto-approve pending tool approvals; DB/indexer/cron status snapshot |
 
-### Laptop always-on (cron stays alive)
+### Windows laptop always-on (your PC — cron stays alive)
 
-Auto-approve is **never off**. System checks run every **2 minutes**. On a Windows PC, keep the machine awake while the API runs:
+This is for **your Windows laptop** (not the cloud Linux VM). Auto-approve is **never off**. System checks run every **2 minutes** on the API. Keep the laptop awake while Open Jarvis runs:
+
+1. Start the API on the laptop: `bun run dev` (or your usual start).
+2. Double-click **`scripts\keep-awake-windows.cmd`**  
+   (or: `powershell -ExecutionPolicy Bypass -File scripts\keep-awake.ps1 -IgnoreLidCloseOnAc`)
+3. Leave that window open. Every **2 minutes** it:
+   - re-asserts “don’t sleep” (`SetThreadExecutionState`)
+   - pings `http://127.0.0.1:3001/api/health` + `/api/cron/system`
+4. Optional once (Admin PowerShell): the script already sets sleep/hibernate/monitor to **Never** on AC + battery. `-IgnoreLidCloseOnAc` = lid close does nothing while plugged in.
 
 ```powershell
-# Preferred: prevent sleep + ping health/cron every 2 minutes
-powershell -ExecutionPolicy Bypass -File scripts/keep-awake.ps1 -SetPowerPlan
-
-# Or only pin power timeouts (no ping loop):
-powercfg /change standby-timeout-ac 0
-powercfg /change monitor-timeout-ac 0
-powercfg /change standby-timeout-dc 0
-powercfg /change monitor-timeout-dc 0
+# From the repo root on the Windows laptop:
+.\scripts\keep-awake-windows.cmd
+# or:
+powershell -ExecutionPolicy Bypass -File .\scripts\keep-awake.ps1 -IgnoreLidCloseOnAc
 ```
 
-`scripts/keep-awake.ps1` uses `SetThreadExecutionState` so Windows stays awake, and every 2 minutes hits `/api/health` + `/api/cron/system` (and prints `autoApproveAll`). Leave the machine plugged in while `bun run dev` / the API is up.
+Close the keep-awake window (or Ctrl+C) when you want normal sleep again.
 
 API: `GET /api/cron/system` · force: `POST /api/cron/{id}/run` · results: `cron_runs.detail.maintenance`
 

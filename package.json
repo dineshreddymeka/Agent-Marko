@@ -41,7 +41,7 @@
     "verify:cowork": "bun run test:cowork",
     "verify:live": "bun run scripts/verify-live-features.ts",
     "test:live-net": "HERMES_LIVE_NET=1 HERMES_CHROME_MOCK=0 bun test server/test/live-internet.test.ts",
-    "keep-awake": "echo \"On Windows run: powershell -ExecutionPolicy Bypass -File scripts/keep-awake.ps1\""
+    "keep-awake": "echo On your Windows laptop: double-click scripts/keep-awake-windows.cmd  (or: powershell -ExecutionPolicy Bypass -File scripts/keep-awake.ps1 -IgnoreLidCloseOnAc)"
   },
   "devDependencies": {
     "@eslint/js": "^9.28.0",
