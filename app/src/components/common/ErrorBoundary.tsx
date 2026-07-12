@@ -22,7 +22,7 @@ export class ErrorBoundary extends Component<Props, State> {
     const chat = useChatStore.getState()
     const settings = useSettingsStore.getState()
     const diagnostics = {
-      version: '0.1.0',
+      version: '0.2.0',
       product: 'Open Jarvis',
       theme: settings.theme,
       model: settings.model,

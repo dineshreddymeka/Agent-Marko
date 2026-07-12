@@ -5,8 +5,8 @@ const PANELS = [
   { path: '/panel/workspace', heading: 'Workspace' },
   { path: '/panel/skills', heading: 'Skills' },
   { path: '/panel/memory', heading: 'Memory' },
-  { path: '/panel/connections', heading: 'Connections' },
-  { path: '/panel/cron', heading: 'Cron Jobs' },
+  { path: '/panel/connections', heading: 'MCP' },
+  { path: '/panel/cron', heading: 'Cowork' },
   { path: '/panel/profiles', heading: 'Profiles' },
   { path: '/panel/settings', heading: 'Settings' },
 ] as const
@@ -36,7 +36,7 @@ test.describe('Open Jarvis smoke', () => {
   test('navigates to settings panel with debug tab', async ({ page }) => {
     await page.goto('/panel/settings')
     await expect(page.getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'debug' })).toBeVisible()
+    await expect(page.getByRole('tab', { name: 'Debug' })).toBeVisible()
   })
 
   test('command palette documents keyboard shortcuts', async ({ page }) => {

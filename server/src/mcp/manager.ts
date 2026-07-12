@@ -155,7 +155,7 @@ async function connectWithTransport(
   clearReconnect(server.id)
   attachTransportWatchers(server, transport)
 
-  const client = new Client({ name: 'open-jarvis', version: '0.1.0' })
+  const client = new Client({ name: 'open-jarvis', version: '0.2.0' })
   await client.connect(transport)
   clients.set(server.id, client)
   serverConfigs.set(server.id, server)
