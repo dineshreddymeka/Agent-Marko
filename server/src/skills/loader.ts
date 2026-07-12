@@ -1,4 +1,4 @@
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { config } from '../config'
 import { skillsRepo } from '../db/repositories/skills'
@@ -19,7 +19,6 @@ function parseFrontmatter(raw: string): ParsedSkill | null {
   const match = raw.match(FRONTMATTER_RE)
   if (!match) return null
   const meta = match[1] ?? ''
-  const body = match[2] ?? ''
   const fields: Record<string, string> = {}
   for (const line of meta.split('\n')) {
     const idx = line.indexOf(':')

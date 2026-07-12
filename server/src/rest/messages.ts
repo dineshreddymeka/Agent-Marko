@@ -1,4 +1,4 @@
-import { jsonResponse, parseJson } from './helpers'
+import { jsonResponse } from './helpers'
 
 export async function handleMessages(req: Request, path: string): Promise<Response | null> {
   const { messagesRepo } = await import('../db/repositories/messages')

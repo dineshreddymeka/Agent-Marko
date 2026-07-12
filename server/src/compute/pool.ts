@@ -2,7 +2,6 @@ import { writeFile, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { config } from '../config'
-import { logger } from '../log'
 
 const poolSize = 2
 const workers: Worker[] = []

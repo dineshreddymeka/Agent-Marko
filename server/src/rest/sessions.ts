@@ -1,4 +1,4 @@
-import { jsonResponse, parseJson, readBody } from './helpers'
+import { jsonResponse, parseJson } from './helpers'
 import { requireDatabaseOrResponse, withDatabase } from './db-guard'
 
 export async function handleSessions(req: Request, path: string): Promise<Response | null> {

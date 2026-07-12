@@ -1,6 +1,5 @@
 import { Cron } from 'croner'
 import { randomUUID } from 'node:crypto'
-import { EventType } from '@ag-ui/core'
 import { cronRepo } from '../db/repositories/cron'
 import { sessionsRepo } from '../db/repositories/sessions'
 import { nativeProvider } from '../agent/providers/native'

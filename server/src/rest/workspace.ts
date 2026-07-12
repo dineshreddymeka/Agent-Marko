@@ -1,4 +1,4 @@
-import { readdir, readFile, stat, writeFile, mkdir } from 'node:fs/promises'
+import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { config } from '../config'
 import { jsonResponse, parseJson } from './helpers'

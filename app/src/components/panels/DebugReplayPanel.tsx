@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Play, RefreshCw, Activity } from 'lucide-react'
 import {
@@ -25,24 +25,24 @@ export function DebugReplayPanel() {
   const [lastReplayCount, setLastReplayCount] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
       const [h, r] = await Promise.all([fetchDebugHealth(), fetchRecentRuns()])
       setHealth(h)
       setRuns(r)
-      if (!runId && r[0]) setRunId(r[0].runId)
+      setRunId((current) => current || r[0]?.runId || '')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Debug API unavailable')
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   useEffect(() => {
     if (lastRunId) setRunId(lastRunId)
