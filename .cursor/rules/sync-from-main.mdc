@@ -1,0 +1,17 @@
+---
+description: Always sync from origin/main before making changes in this repo
+alwaysApply: true
+---
+
+# Sync from main first
+
+Before editing code, running verification, or answering "what's in the repo":
+
+1. `git fetch origin`
+2. Ensure you're on `main` (or rebase your branch onto `origin/main`)
+3. `git pull --rebase origin main` when the working tree is clean (stash uncommitted work first if needed)
+4. After pull, restore stashed work and resolve conflicts favoring **remote main** for files that exist on both sides unless the user explicitly kept local overrides
+
+Do not assemble files via `git checkout <old-commit> -- <path>` when the same paths exist on `origin/main` — pull from main instead.
+
+When local and `origin/main` diverge, report: commits ahead/behind, staged vs remote file diff counts, then sync before continuing feature work.

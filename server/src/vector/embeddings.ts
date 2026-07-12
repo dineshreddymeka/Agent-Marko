@@ -3,6 +3,24 @@ import { VectorError } from '../errors'
 import { logger } from '../log'
 
 const BATCH_SIZE = 64
+const BRIDGE_RE = /:3456(?:\/|$)|lm-bridge/i
+
+function embeddingsBaseUrl(): string {
+  const candidates = [
+    config.HERMES_EMBEDDINGS_URL,
+    config.HERMES_AGENT_LLM_URL,
+    config.LLM_BASE_URL,
+  ]
+  for (const c of candidates) {
+    const url = (c || '').trim().replace(/\/$/, '')
+    if (!url) continue
+    // Never send embeddings to the chat-only lm-bridge.
+    if (BRIDGE_RE.test(url)) continue
+    return url
+  }
+  // Last resort (may be bridge) — callers fail and retrieval falls back to lexical.
+  return config.LLM_BASE_URL.replace(/\/$/, '')
+}
 
 export async function embedText(text: string): Promise<number[]> {
   const results = await embedBatch([text])
@@ -11,7 +29,7 @@ export async function embedText(text: string): Promise<number[]> {
 
 export async function embedBatch(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return []
-  const url = `${config.LLM_BASE_URL.replace(/\/$/, '')}/embeddings`
+  const url = `${embeddingsBaseUrl()}/embeddings`
   const all: number[][] = []
 
   for (let i = 0; i < texts.length; i += BATCH_SIZE) {

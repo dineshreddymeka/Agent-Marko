@@ -82,6 +82,19 @@ export function Composer({ sessionId }: ComposerProps) {
     setSlashIndex(0)
   }, [text])
 
+  useEffect(() => {
+    const onComposerSlash = (e: Event) => {
+      const detail = (e as CustomEvent<{ text?: string }>).detail
+      const next = detail?.text ?? ''
+      if (!next) return
+      setText(next)
+      setSlashOpen(true)
+      textareaRef.current?.focus()
+    }
+    window.addEventListener('open-jarvis:composer-slash', onComposerSlash)
+    return () => window.removeEventListener('open-jarvis:composer-slash', onComposerSlash)
+  }, [])
+
   const runSlash = useCallback(
     async (command: SlashCommand, args: string) => {
       setSlashOpen(false)

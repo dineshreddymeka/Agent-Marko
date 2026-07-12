@@ -372,7 +372,7 @@ function BestMcpOptions({
   )
 }
 
-export function McpSubPanel() {
+export function McpSubPanel({ embedded = false }: { embedded?: boolean }) {
   const addToast = useUiStore((s) => s.addToast)
   const queryClient = useQueryClient()
   const [showForm, setShowForm] = useState(false)
@@ -521,7 +521,7 @@ export function McpSubPanel() {
     onSettled: () => setCreatingPresetId(null),
   })
 
-  if (isLoading) return <Skeleton className="h-48 w-full" />
+  if (isLoading) return <Skeleton className={embedded ? 'h-32 w-full' : 'h-48 w-full'} />
   if (isError) {
     return (
       <EmptyState
@@ -570,16 +570,30 @@ export function McpSubPanel() {
   ]
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4">
-      <div className="border-b border-border pb-4">
-        <div className="flex items-end justify-between gap-4">
-          <div className="min-w-0">
-            <h3 className="text-base font-semibold tracking-tight text-fg">Connections</h3>
-            <p className="mt-1 max-w-2xl text-xs leading-relaxed text-fg-muted">
-              Model Context Protocol servers for Open Jarvis. Manage transport, health, and tool
-              allowlists from one console.
-            </p>
+    <div className={embedded ? 'space-y-4' : 'mx-auto max-w-4xl space-y-4'}>
+      {!embedded ? (
+        <div className="border-b border-border pb-4">
+          <div className="flex items-end justify-between gap-4">
+            <div className="min-w-0">
+              <h3 className="text-base font-semibold tracking-tight text-fg">Connections</h3>
+              <p className="mt-1 max-w-2xl text-xs leading-relaxed text-fg-muted">
+                Model Context Protocol servers for Open Jarvis. Manage transport, health, and tool
+                allowlists from one console.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowForm(true)}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-white"
+            >
+              <Plus size={14} strokeWidth={2.5} />
+              Add server
+            </button>
           </div>
+          <WorkflowLegend />
+        </div>
+      ) : (
+        <div className="flex justify-end">
           <button
             type="button"
             onClick={() => setShowForm(true)}
@@ -589,8 +603,7 @@ export function McpSubPanel() {
             Add server
           </button>
         </div>
-        <WorkflowLegend />
-      </div>
+      )}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="group" aria-label="Health metrics">
         {metricCards.map((m) => {

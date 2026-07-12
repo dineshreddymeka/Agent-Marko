@@ -109,33 +109,28 @@ export async function buildAgentContext(input: RunAgentInput): Promise<BuiltCont
   if (query) {
     try {
       const embedding = await embedText(query)
-      const memories = await memoryRepo.vectorSearch(embedding, 5)
-      memorySnippets = memories.map((m) => `[${m.kind}] ${m.content}`)
-      const skills = await skillsRepo.vectorSearch(embedding, 3)
-      skillSnippets = skills.map((s) => `# Skill: ${s.name}\n${s.bodyMd}`)
-      try {
-        const msgs = await messagesRepo.ftsSearch(query, 5)
-        transcriptSnippets = msgs.map((m) => `[${m.role}] ${m.content.slice(0, 500)}`)
-      } catch {
-        // transcript recall optional
-      }
-    } catch {
-      const skills = await skillsRepo.search(query, 3)
-      skillSnippets = skills.map((s) => `# Skill: ${s.name}\n${s.bodyMd}`)
-    }
-
-    try {
       const topK = config.INDEXER_DEFAULT_TOP_K
-      const [current, byRun, broad] = await Promise.all([
-        searchRecallIndex({ query, topK: Math.min(3, topK), sessionId: input.threadId }),
-        searchRecallIndex({
-          query,
-          topK: Math.min(3, topK),
-          sessionId: input.threadId,
-          runId: input.runId,
-        }),
-        searchRecallIndex({ query, topK: Math.min(5, topK) }),
+      const [memories, skills, ftsMsgs, recallHits] = await Promise.all([
+        memoryRepo.vectorSearch(embedding, 5).catch(() => []),
+        skillsRepo.vectorSearch(embedding, 3).catch(() => []),
+        messagesRepo.ftsSearch(query, 5).catch(() => []),
+        Promise.all([
+          searchRecallIndex({ query, topK: Math.min(3, topK), sessionId: input.threadId }).catch(
+            () => [],
+          ),
+          searchRecallIndex({
+            query,
+            topK: Math.min(3, topK),
+            sessionId: input.threadId,
+            runId: input.runId,
+          }).catch(() => []),
+          searchRecallIndex({ query, topK: Math.min(5, topK) }).catch(() => []),
+        ]),
       ])
+      memorySnippets = memories.map((m) => `[${m.kind}] ${m.content}`)
+      skillSnippets = skills.map((s) => `# Skill: ${s.name}\n${s.bodyMd}`)
+      transcriptSnippets = ftsMsgs.map((m) => `[${m.role}] ${m.content.slice(0, 500)}`)
+      const [current, byRun, broad] = recallHits
       const seen = new Set<string>()
       recallSnippets = [...byRun, ...current, ...broad]
         .filter((item) => {
@@ -146,7 +141,8 @@ export async function buildAgentContext(input: RunAgentInput): Promise<BuiltCont
         })
         .map(formatRecallSnippet)
     } catch {
-      // indexed recall is optional
+      const skills = await skillsRepo.search(query, 3).catch(() => [])
+      skillSnippets = skills.map((s) => `# Skill: ${s.name}\n${s.bodyMd}`)
     }
   }
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Command } from 'cmdk'
 import { useNavigate } from '@tanstack/react-router'
 import { useUiStore, type PanelName } from '@app/stores/ui'
@@ -7,6 +7,8 @@ import { useSessionsStore } from '@app/stores/sessions'
 import { createPersistedSession } from '@app/lib/sessions-api'
 import { apiClient } from '@app/lib/api'
 import { panelLabel } from '@app/lib/labels'
+import { listSlashCommands } from '@app/lib/slash-commands'
+import { useCapabilities } from '@app/hooks/useCapabilities'
 import { Kbd } from '@app/components/common/Kbd'
 import type { Session } from '@hermes/shared'
 
@@ -32,6 +34,11 @@ export function CommandPalette() {
   const setActiveSessionId = useSessionsStore((s) => s.setActiveSessionId)
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
+  const { data: capabilities } = useCapabilities()
+  const slashCommands = useMemo(
+    () => listSlashCommands(),
+    [capabilities?.slashCommands?.length],
+  )
 
   const newSession = async (profileId: string | null = null) => {
     setOpen(false)
@@ -129,6 +136,35 @@ export function CommandPalette() {
               </Command.Item>
             ))}
           </Command.Group>
+
+          {slashCommands.length > 0 ? (
+            <Command.Group heading="Slash commands" className="text-xs text-fg-muted">
+              {slashCommands.map((cmd) => (
+                <Command.Item
+                  key={cmd.cmd}
+                  value={`${cmd.cmd} ${cmd.desc}`}
+                  onSelect={() => {
+                    setOpen(false)
+                    const activeId = useSessionsStore.getState().activeSessionId
+                    if (activeId) {
+                      void navigate({ to: '/session/$id', params: { id: activeId } })
+                    } else {
+                      void navigate({ to: '/' })
+                    }
+                    window.dispatchEvent(
+                      new CustomEvent('open-jarvis:composer-slash', {
+                        detail: { text: `${cmd.cmd} ` },
+                      }),
+                    )
+                  }}
+                  className="cursor-pointer rounded-md px-2 py-1.5 text-sm text-fg aria-selected:bg-accent-muted"
+                >
+                  <span className="font-mono text-xs">{cmd.cmd}</span>
+                  <span className="ml-2 text-fg-muted">{cmd.desc}</span>
+                </Command.Item>
+              ))}
+            </Command.Group>
+          ) : null}
 
           <Command.Group heading="Theme" className="text-xs text-fg-muted">
             {(['dark', 'dim', 'light'] as const).map((t) => (

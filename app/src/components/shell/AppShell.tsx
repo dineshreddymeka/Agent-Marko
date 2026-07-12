@@ -12,7 +12,7 @@ import { Toasts } from '@app/components/common/Toasts'
 import { ErrorBoundary } from '@app/components/common/ErrorBoundary'
 import { useKeyboardShortcuts } from '@app/hooks/useKeyboardShortcuts'
 import { useUiStore, type Theme } from '@app/stores/ui'
-import { registerSlashCommand } from '@app/lib/slash-commands'
+import { CapabilitiesBootstrap } from '@app/components/CapabilitiesBootstrap'
 
 const themeIcons: Record<Theme, typeof Moon> = {
   dark: Moon,
@@ -44,24 +44,11 @@ export function AppShell() {
     }
   }, [showSessionsSidebar, setSidebarOpen])
 
-  useEffect(() => {
-    void fetch('/api/mcp/prompts')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: { prompts?: Array<{ slash: string; description?: string }> } | null) => {
-        for (const p of data?.prompts ?? []) {
-          registerSlashCommand({
-            cmd: p.slash,
-            desc: p.description ?? `MCP prompt ${p.slash}`,
-          })
-        }
-      })
-      .catch(() => undefined)
-  }, [])
-
   const ThemeIcon = themeIcons[theme]
 
   return (
     <ErrorBoundary>
+      <CapabilitiesBootstrap />
       <div className="flex h-full flex-col pb-14 md:pb-0">
         <div className="relative flex min-h-0 flex-1">
           <IconRail />

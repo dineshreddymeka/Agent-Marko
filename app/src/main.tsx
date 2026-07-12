@@ -9,6 +9,7 @@ import {
   restoreQueryClientState,
   shouldPersistQueryKey,
 } from '@app/lib/query-persist'
+import { fetchCapabilities, CAPABILITIES_QUERY_KEY } from '@app/hooks/useCapabilities'
 import '@app/styles/index.css'
 
 applyTheme('dark')
@@ -48,6 +49,12 @@ async function bootstrap() {
   } catch {
     // IndexedDB unavailable (SSR/tests) — continue without cache
   }
+
+  void queryClient.prefetchQuery({
+    queryKey: CAPABILITIES_QUERY_KEY,
+    queryFn: fetchCapabilities,
+    staleTime: 30_000,
+  })
 
   let persistTimer: ReturnType<typeof setTimeout> | null = null
   queryClient.getQueryCache().subscribe(() => {

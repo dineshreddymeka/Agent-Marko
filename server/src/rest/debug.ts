@@ -46,6 +46,20 @@ export async function handleDebug(req: Request, path: string): Promise<Response 
         autoSso: config.MICROSOFT_SSO_AUTO,
       },
       llm: getLlmDebugInfo(),
+      agentLlm: await import('../capabilities').then((m) => m.getAgentLlmHealthSnapshot()),
+      capabilities: await import('../capabilities').then((m) => {
+        const cached = m.getCapabilityManifestSync()
+        return {
+          refreshedAt: cached?.refreshedAt ?? null,
+          toolCount: cached?.tools.length ?? 0,
+          skillCount: cached?.skills.length ?? 0,
+          pluginCount: cached?.plugins.length ?? 0,
+          slashCommandCount: cached?.slashCommands.length ?? 0,
+          retrievalMode: cached?.retrievalMode ?? null,
+          routing: cached?.routing ?? config.HERMES_ROUTING,
+          vectorCacheSize: m.getDescriptionVectorCacheSize(),
+        }
+      }),
       cleanup: getCleanupStatus(),
       memory: process.memoryUsage(),
       uptime: process.uptime(),

@@ -1,3 +1,4 @@
+import { recordAgentLlmFailure, recordAgentLlmSuccess } from '../capabilities/health'
 import { config } from '../config'
 import { LlmError } from '../errors'
 import { isDebugChannel, logger } from '../log'
@@ -38,6 +39,7 @@ export async function* streamChatCompletion(opts: {
   temperature: number
   messages: ChatMessage[]
   tools?: LlmTool[]
+  baseUrl?: string
   signal?: AbortSignal
 }): AsyncGenerator<StreamDelta> {
   const started = performance.now()
@@ -53,7 +55,8 @@ export async function* streamChatCompletion(opts: {
     return
   }
 
-  const url = `${config.LLM_BASE_URL.replace(/\/$/, '')}/chat/completions`
+  const baseUrl = (opts.baseUrl ?? config.LLM_BASE_URL).replace(/\/$/, '')
+  const url = `${baseUrl}/chat/completions`
   if (isDebugChannel('llm')) {
     logger.debug('LLM request start', {
       url,
@@ -98,6 +101,8 @@ export async function* streamChatCompletion(opts: {
       signal,
     })
   } catch (err) {
+    const aborted = err instanceof Error && err.name === 'AbortError'
+    if (!aborted) recordAgentLlmFailure(err, false)
     const msg = err instanceof Error ? err.message : String(err)
     const timedOut = err instanceof Error && err.name === 'TimeoutError'
     logger.error('LLM request transport failed', {
@@ -115,6 +120,7 @@ export async function* streamChatCompletion(opts: {
 
   if (!res.ok) {
     const text = await res.text()
+    recordAgentLlmFailure(new Error(`HTTP ${res.status}`), false)
     logger.error('LLM request failed', {
       status: res.status,
       durationMs: Math.round(performance.now() - started),
@@ -122,6 +128,8 @@ export async function* streamChatCompletion(opts: {
     })
     throw new LlmError(`LLM request failed (${res.status}): ${text}`)
   }
+
+  recordAgentLlmSuccess()
 
   if (!res.body) {
     throw new LlmError('LLM response has no body')
