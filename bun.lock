@@ -4,6 +4,7 @@
   "workspaces": {
     "": {
       "name": "hermes-ui",
+      "version": "0.2.0",
       "dependencies": {
         "clsx": "^2.1.1",
         "drizzle-orm": "^0.45.2",
@@ -24,7 +25,7 @@
     },
     "app": {
       "name": "app",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@ag-ui/client": "^0.0.57",
         "@hermes/shared": "workspace:*",
@@ -58,14 +59,14 @@
     },
     "packages/shared": {
       "name": "@hermes/shared",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "zod": "^3.25.56",
       },
     },
     "server": {
       "name": "server",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@ag-ui/core": "^0.0.39",
         "@hermes/shared": "workspace:*",
