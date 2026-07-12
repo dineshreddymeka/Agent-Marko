@@ -149,7 +149,7 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          if [ -z "$SNAR_TOKEN" ]; then
+          if [ -z "$SONAR_TOKEN" ]; then
             echo "present=false" >> "$GITHUB_OUTPUT"
             echo "::notice::SONAR_TOKEN not set — skipping. Create a free SonarCloud project at https://sonarcloud.io and add the token as repo secret SONAR_TOKEN."
           else

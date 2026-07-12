@@ -70,7 +70,14 @@ CI includes a free-tier [Snyk](https://snyk.io) job for dependency and code scan
 Until the secret is set, the Snyk job skips cleanly. With the token present, scans fail the job on **low** (or worse) severity findings (`--fail-on=all`). Pushes to `main` also run `snyk monitor` so the project stays visible in the Snyk dashboard.
 ### Free SonarCloud (optional)
 
-CI includes a free [SonarCloud](https://sonarcloud.io) (Sonar) job for code quality and security analysis. To enable it:
+CI includes a full-project [SonarCloud](https://sonarcloud.io) scan so nothing in the monorepo is skipped:
+
+- Sources: `app/src`, `server/src`, `packages/shared/src`, `scripts`, `server/migrations`, `.github` workflows, `docker-compose.yml`
+- Tests: unit suites + Playwright `e2e` + colocated `*.test.ts`
+- Coverage: LCOV from `bun test --coverage`
+- Quality gate: `sonar.qualitygate.wait=true` (job fails if the gate fails)
+
+To enable it:
 
 1. Sign up / import this repo at https://sonarcloud.io/projects/create (Free or OSS plan for public repos).
 2. Match `sonar.organization` and `sonar.projectKey` in [`sonar-project.properties`](./sonar-project.properties) to the values SonarCloud shows for the project.
