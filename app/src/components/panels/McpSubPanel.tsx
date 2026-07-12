@@ -46,6 +46,7 @@ type McpPreset = {
   url?: string
   httpPreferSse?: boolean
   autoReconnect?: boolean
+  timeoutMs?: number
 }
 
 const BEST_MCP_PRESETS: McpPreset[] = [
@@ -58,6 +59,7 @@ const BEST_MCP_PRESETS: McpPreset[] = [
     name: 'filesystem',
     command: 'npx -y @modelcontextprotocol/server-filesystem .',
     autoReconnect: true,
+    timeoutMs: 60_000,
   },
   {
     id: 'memory',
@@ -68,6 +70,7 @@ const BEST_MCP_PRESETS: McpPreset[] = [
     name: 'memory',
     command: 'npx -y @modelcontextprotocol/server-memory',
     autoReconnect: true,
+    timeoutMs: 60_000,
   },
   {
     id: 'http-remote',
@@ -79,6 +82,7 @@ const BEST_MCP_PRESETS: McpPreset[] = [
     url: 'http://127.0.0.1:3921/mcp',
     httpPreferSse: false,
     autoReconnect: true,
+    timeoutMs: 30_000,
   },
   {
     id: 'chrome-mock',
@@ -87,11 +91,59 @@ const BEST_MCP_PRESETS: McpPreset[] = [
     description: 'Local mock Chrome MCP for document research Connect/Test flows.',
     transport: 'http',
     name: 'chrome-mock',
-    url: 'http://127.0.0.1:3931/mcp',
+    // Matches server/scripts/mock-mcp-chrome.ts default MOCK_MCP_CHROME_PORT
+    url: 'http://127.0.0.1:3922/mcp',
     httpPreferSse: false,
     autoReconnect: true,
+    timeoutMs: 30_000,
   },
 ]
+
+function presetCreateBody(preset: McpPreset) {
+  return {
+    name: preset.name,
+    description: preset.description,
+    transport: preset.transport,
+    command: preset.transport === 'stdio' ? (preset.command ?? null) : null,
+    url: preset.transport === 'http' ? (preset.url ?? null) : null,
+    enabled: true,
+    httpPreferSse: preset.transport === 'http' ? Boolean(preset.httpPreferSse) : false,
+    timeoutMs: preset.timeoutMs ?? 60_000,
+    autoReconnect: preset.autoReconnect !== false,
+    metadata: {
+      presetId: preset.id,
+      presetBadge: preset.badge,
+      source: 'best-options',
+    },
+  }
+}
+
+function toastFromCreatedServer(
+  server: McpServer,
+  addToast: (t: { title: string; description?: string; variant?: 'default' | 'success' | 'danger' | 'attention' }) => void,
+) {
+  if (server.lastStatus === 'connected') {
+    addToast({
+      title: `${server.name} connected`,
+      description: 'Saved to mcp_servers and ready to use.',
+      variant: 'success',
+    })
+    return
+  }
+  if (server.lastStatus === 'error' || server.lastStatus === 'reconnecting') {
+    addToast({
+      title: `${server.name} saved — connect pending`,
+      description: server.lastError ?? 'Server row persisted; start the MCP endpoint and hit Connect.',
+      variant: 'attention',
+    })
+    return
+  }
+  addToast({
+    title: `${server.name} added`,
+    description: 'Persisted to mcp_servers.',
+    variant: 'success',
+  })
+}
 
 type McpState = {
   serverId: string
@@ -267,33 +319,44 @@ function WorkflowLegend() {
   )
 }
 
-/** Curated Best options — picking one prefills Add MCP server (persists via /api/settings/mcp). */
-function BestMcpOptions({ onPick }: { onPick: (preset: McpPreset) => void }) {
+/** Curated Best options — one click creates + connects via /api/settings/mcp → mcp_servers. */
+function BestMcpOptions({
+  existingNames,
+  creatingId,
+  onAdd,
+}: {
+  existingNames: Set<string>
+  creatingId: string | null
+  onAdd: (preset: McpPreset) => void
+}) {
   return (
     <section aria-label="Best MCP options" className="space-y-2">
       <div className="flex items-baseline justify-between gap-3">
         <div>
           <h4 className="text-sm font-semibold text-fg">Best options</h4>
           <p className="mt-0.5 text-xs text-fg-muted">
-            Start from a recommended transport. Create writes to Postgres (`mcp_servers`); connect
-            events land in `mcp_connection_events`.
+            One click creates the server in Postgres and attempts connect. Events land in
+            `mcp_connection_events`.
           </p>
         </div>
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
         {BEST_MCP_PRESETS.map((preset) => {
           const Icon = preset.transport === 'stdio' ? Terminal : Globe
+          const already = existingNames.has(preset.name)
+          const busy = creatingId === preset.id
           return (
             <button
               key={preset.id}
               type="button"
-              onClick={() => onPick(preset)}
-              className="rounded-lg border border-border p-3 text-left transition-colors hover:border-accent hover:bg-accent-muted/40"
+              disabled={already || busy || creatingId != null}
+              onClick={() => onAdd(preset)}
+              className="rounded-lg border border-border p-3 text-left transition-colors hover:border-accent hover:bg-accent-muted/40 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <div className="flex items-start justify-between gap-2">
                 <Icon size={16} className="mt-0.5 shrink-0 text-fg-muted" />
                 <span className="rounded border border-border bg-canvas-subtle px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-fg-muted uppercase">
-                  {preset.badge}
+                  {already ? 'Added' : busy ? 'Adding…' : preset.badge}
                 </span>
               </div>
               <p className="mt-2 text-sm font-medium text-fg">{preset.title}</p>
@@ -313,11 +376,11 @@ export function McpSubPanel() {
   const addToast = useUiStore((s) => s.addToast)
   const queryClient = useQueryClient()
   const [showForm, setShowForm] = useState(false)
-  const [formPreset, setFormPreset] = useState<McpPreset | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [testResult, setTestResult] = useState<Record<string, McpState>>({})
+  const [creatingPresetId, setCreatingPresetId] = useState<string | null>(null)
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['mcp-servers'],
@@ -437,6 +500,27 @@ export function McpSubPanel() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['mcp-servers'] }),
   })
 
+  const addBestOption = useMutation({
+    mutationFn: async (preset: McpPreset) => {
+      setCreatingPresetId(preset.id)
+      return apiClient.post<McpServer>('/api/settings/mcp', presetCreateBody(preset))
+    },
+    onSuccess: (server) => {
+      toastFromCreatedServer(server, addToast)
+      void queryClient.invalidateQueries({ queryKey: ['mcp-servers'] })
+      void queryClient.invalidateQueries({ queryKey: ['mcp-events', server.id] })
+      setExpandedId(server.id)
+    },
+    onError: (err) => {
+      addToast({
+        title: 'Could not add Best option',
+        description: err instanceof Error ? err.message : undefined,
+        variant: 'danger',
+      })
+    },
+    onSettled: () => setCreatingPresetId(null),
+  })
+
   if (isLoading) return <Skeleton className="h-48 w-full" />
   if (isError) {
     return (
@@ -451,6 +535,8 @@ export function McpSubPanel() {
       />
     )
   }
+
+  const existingNames = new Set(servers.map((s) => s.name))
 
   const metricCards = [
     {
@@ -496,10 +582,7 @@ export function McpSubPanel() {
           </div>
           <button
             type="button"
-            onClick={() => {
-              setFormPreset(null)
-              setShowForm(true)
-            }}
+            onClick={() => setShowForm(true)}
             className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-white"
           >
             <Plus size={14} strokeWidth={2.5} />
@@ -595,27 +678,24 @@ export function McpSubPanel() {
         </p>
       ) : null}
 
+      <BestMcpOptions
+        existingNames={existingNames}
+        creatingId={creatingPresetId}
+        onAdd={(preset) => addBestOption.mutate(preset)}
+      />
+
       {showForm ? (
         <McpServerForm
-          initial={formPreset}
-          onCancel={() => {
+          onCancel={() => setShowForm(false)}
+          onSaved={(server) => {
             setShowForm(false)
-            setFormPreset(null)
-          }}
-          onSaved={() => {
-            setShowForm(false)
-            setFormPreset(null)
+            toastFromCreatedServer(server, addToast)
             void queryClient.invalidateQueries({ queryKey: ['mcp-servers'] })
+            void queryClient.invalidateQueries({ queryKey: ['mcp-events', server.id] })
+            setExpandedId(server.id)
           }}
         />
-      ) : (
-        <BestMcpOptions
-          onPick={(preset) => {
-            setFormPreset(preset)
-            setShowForm(true)
-          }}
-        />
-      )}
+      ) : null}
 
       {!servers.length ? (
         <EmptyState
@@ -625,10 +705,7 @@ export function McpSubPanel() {
           action={
             <button
               type="button"
-              onClick={() => {
-                setFormPreset(null)
-                setShowForm(true)
-              }}
+              onClick={() => setShowForm(true)}
               className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-white"
             >
               <Plus size={14} strokeWidth={2.5} />
@@ -951,25 +1028,23 @@ function DetailColumn({
 }
 
 function McpServerForm({
-  initial,
   onSaved,
   onCancel,
 }: {
-  initial?: McpPreset | null
-  onSaved: () => void
+  onSaved: (server: McpServer) => void
   onCancel: () => void
 }) {
   const addToast = useUiStore((s) => s.addToast)
-  const [name, setName] = useState(initial?.name ?? '')
-  const [description, setDescription] = useState(initial?.description ?? '')
-  const [transport, setTransport] = useState<'stdio' | 'http'>(initial?.transport ?? 'stdio')
-  const [command, setCommand] = useState(initial?.command ?? '')
-  const [url, setUrl] = useState(initial?.url ?? '')
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [transport, setTransport] = useState<'stdio' | 'http'>('stdio')
+  const [command, setCommand] = useState('')
+  const [url, setUrl] = useState('')
   const [envText, setEnvText] = useState('')
   const [headersText, setHeadersText] = useState('')
-  const [httpPreferSse, setHttpPreferSse] = useState(initial?.httpPreferSse ?? false)
+  const [httpPreferSse, setHttpPreferSse] = useState(false)
   const [timeoutMs, setTimeoutMs] = useState('')
-  const [autoReconnect, setAutoReconnect] = useState(initial?.autoReconnect ?? true)
+  const [autoReconnect, setAutoReconnect] = useState(true)
   const [saving, setSaving] = useState(false)
 
   const save = async () => {
@@ -990,7 +1065,7 @@ function McpServerForm({
     }
     setSaving(true)
     try {
-      await apiClient.post('/api/settings/mcp', {
+      const server = await apiClient.post<McpServer>('/api/settings/mcp', {
         name,
         description: description.trim() || null,
         transport,
@@ -1002,12 +1077,9 @@ function McpServerForm({
         httpPreferSse: transport === 'http' ? httpPreferSse : false,
         timeoutMs: timeout,
         autoReconnect,
-        metadata: initial
-          ? { presetId: initial.id, presetBadge: initial.badge, source: 'best-options' }
-          : { source: 'custom' },
+        metadata: { source: 'custom' },
       })
-      addToast({ title: 'Server added', variant: 'success' })
-      onSaved()
+      onSaved(server)
     } catch (err) {
       addToast({
         title: 'Save failed',
@@ -1023,13 +1095,9 @@ function McpServerForm({
     <div className="rounded-lg border border-border bg-canvas shadow-[var(--hermes-shadow)]">
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div>
-          <p className="text-sm font-semibold text-fg">
-            {initial ? `Add · ${initial.title}` : 'Add MCP server'}
-          </p>
+          <p className="text-sm font-semibold text-fg">Add MCP server</p>
           <p className="text-xs text-fg-muted">
-            {initial
-              ? 'Best option prefilled — adjust if needed, then create (persists to mcp_servers).'
-              : 'Choose connectivity for Open Jarvis, then create and connect.'}
+            Choose connectivity for Open Jarvis, then create and connect.
           </p>
         </div>
         <button
@@ -1122,7 +1190,7 @@ function McpServerForm({
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               className="h-9 w-full rounded-md border border-border bg-canvas px-3 font-mono text-xs"
-              placeholder="http://127.0.0.1:3921/mcp"
+              placeholder="http://127.0.0.1:3921/mcp (or :3922 for chrome mock)"
             />
             <span className="text-[10px] text-fg-subtle">
               Streamable HTTP is tried first; SSE is the fallback. Optional auth via Headers JSON.

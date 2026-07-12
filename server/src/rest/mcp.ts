@@ -74,7 +74,12 @@ export async function handleMcp(req: Request, path: string): Promise<Response | 
         metadata: (body.metadata as Record<string, unknown> | null) ?? null,
       })
     } catch (err) {
-      const msg = String(err)
+      const msg = [
+        String(err),
+        err instanceof Error ? err.message : '',
+        err instanceof Error && err.cause != null ? String(err.cause) : '',
+        typeof err === 'object' && err && 'code' in err ? String((err as { code: unknown }).code) : '',
+      ].join(' ')
       if (/unique|duplicate|23505/i.test(msg)) {
         return jsonResponse(
           {
