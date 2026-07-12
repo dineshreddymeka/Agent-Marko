@@ -5,7 +5,7 @@ describe('health', () => {
   test('returns ok with version and db flag', async () => {
     const res = await getHealthResponse()
     expect(res.ok).toBe(true)
-    expect(res.version).toBe('0.1.0')
+    expect(res.version).toBe('0.2.0')
     expect(typeof res.db).toBe('boolean')
   })
 })

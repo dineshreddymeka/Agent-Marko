@@ -31,7 +31,7 @@ export async function connectServer(server: McpServer): Promise<McpConnectionSta
         args,
         env: { ...process.env, ...(server.env ?? {}) },
       })
-      const client = new Client({ name: 'hermes-ui', version: '0.1.0' })
+      const client = new Client({ name: 'hermes-ui', version: '0.2.0' })
       await client.connect(transport)
       clients.set(server.id, client)
       const toolsResult = await client.listTools()
