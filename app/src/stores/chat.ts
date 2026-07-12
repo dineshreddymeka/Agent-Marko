@@ -93,6 +93,8 @@ interface ChatState {
   clearRunSteps: () => void
   recordEvent: (event: string) => void
   resetRun: () => void
+  /** Flush buffers and clear streaming flags on every in-flight message. */
+  clearStreamingState: () => void
   messageFromDto: (msg: Message) => ChatMessage
 }
 
@@ -331,6 +333,27 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       pendingApproval: null,
       error: null,
     }),
+
+  clearStreamingState: () => {
+    const state = get()
+    for (const msgs of Object.values(state.messagesBySession)) {
+      for (const m of msgs) {
+        if (m.streaming) {
+          state.flushStreamBuffer(m.id)
+          state.flushThinkingBuffer(m.id)
+        }
+      }
+    }
+    set((s) => {
+      const messagesBySession = { ...s.messagesBySession }
+      for (const [sessionId, messages] of Object.entries(messagesBySession)) {
+        messagesBySession[sessionId] = messages.map((m) =>
+          m.streaming ? { ...m, streaming: false } : m,
+        )
+      }
+      return { messagesBySession, streamingBuffer: {} }
+    })
+  },
 
   messageFromDto: (msg) => ({
     id: msg.id,

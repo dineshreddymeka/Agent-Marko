@@ -11,6 +11,69 @@ export type ApprovalDecision = 'approve' | 'reject' | 'always' | 'always_tool'
 
 let agent: HttpAgent | null = null
 let currentSessionId: string | null = null
+/** In-flight runAgent promise — awaited before starting a replacement run. */
+let activeRunPromise: Promise<void> | null = null
+const STARTUP_STALL_TIMEOUT_MS = 15_000
+const STARTUP_STALL_MESSAGE =
+  'Run startup timed out. Please retry.'
+
+/**
+ * True only when a run is genuinely active.
+ * Guards UI against stale `runStatus: running` snapshots.
+ */
+export function hasInFlightRun(): boolean {
+  const state = useChatStore.getState()
+  if (state.runStatus !== 'running') return false
+  return Boolean(state.runId || activeRunPromise)
+}
+
+/**
+ * Recover from stale running state left behind by interrupted reloads/streams.
+ * Returns true when state was repaired.
+ */
+export function recoverStaleRunIfNeeded(): boolean {
+  const state = useChatStore.getState()
+  if (state.runStatus !== 'running') return false
+  if (state.runId || activeRunPromise) return false
+  state.clearStreamingState()
+  state.clearStage()
+  state.setRunStatus('idle')
+  state.setRunId(null)
+  state.setError(null)
+  return true
+}
+
+/**
+ * Resolve a run stuck forever in "starting" (no stream progress/terminal event).
+ * Returns true when a stalled run was transitioned to error.
+ */
+export function recoverRunFromStartingStall(
+  runId: string,
+  message = STARTUP_STALL_MESSAGE,
+): boolean {
+  const state = useChatStore.getState()
+  if (state.runId !== runId) return false
+  if (state.runStatus !== 'running') return false
+  if (state.runStage?.kind !== 'starting') return false
+  resetAgent()
+  finishLocalRun(runId, 'error', message)
+  return true
+}
+
+function startStartupWatchdog(runId: string): () => void {
+  const timer = globalThis.setTimeout(() => {
+    recoverRunFromStartingStall(runId)
+  }, STARTUP_STALL_TIMEOUT_MS)
+  return () => globalThis.clearTimeout(timer)
+}
+
+/** Test helper to validate startup-timeout recovery behavior. */
+export function startStartupWatchdogForTests(runId: string, timeoutMs: number): () => void {
+  const timer = globalThis.setTimeout(() => {
+    recoverRunFromStartingStall(runId)
+  }, timeoutMs)
+  return () => globalThis.clearTimeout(timer)
+}
 
 function getAgent(sessionId: string): HttpAgent {
   if (!agent || agent.threadId !== sessionId) {
@@ -26,6 +89,38 @@ function getAgent(sessionId: string): HttpAgent {
     })
   }
   return agent
+}
+
+/** Drop the shared HttpAgent so the next turn cannot inherit a half-aborted protocol state. */
+function resetAgent(): void {
+  if (agent) {
+    try {
+      agent.abortRun()
+    } catch {
+      /* ignore */
+    }
+  }
+  agent = null
+}
+
+function finishLocalRun(
+  runId: string,
+  status: 'idle' | 'error',
+  error?: string | null,
+): void {
+  const state = useChatStore.getState()
+  if (state.runId !== runId) return
+  state.clearStreamingState()
+  if (error) state.setError(error)
+  else state.setError(null)
+  state.setRunStatus(status)
+  if (status === 'idle') {
+    state.setRunId(null)
+    state.clearStage()
+  } else {
+    state.setRunId(null)
+    state.setStage('error')
+  }
 }
 
 function toAguiMessages(
@@ -70,10 +165,29 @@ export async function runAgent(input: {
   const { sessionId, content, reuseLastUserMessage } = input
   currentSessionId = sessionId
 
-  // Cancel any in-flight run so late SSE chunks cannot attach to the next turn.
+  // Cancel any in-flight run and wait for it to settle so we never stack two
+  // HttpAgent.runAgent() calls on one instance (leaves thinking/stop stuck).
   const prior = useChatStore.getState()
   if (prior.runStatus === 'running' && agent) {
-    agent.abortRun()
+    try {
+      agent.abortRun()
+    } catch {
+      /* ignore */
+    }
+    const pending = activeRunPromise
+    if (pending) {
+      try {
+        await Promise.race([
+          pending,
+          new Promise<void>((resolve) => {
+            globalThis.setTimeout(resolve, 2_000)
+          }),
+        ])
+      } catch {
+        /* prior run error is expected after abort */
+      }
+    }
+    resetAgent()
   }
 
   const runId = generateId()
@@ -113,26 +227,44 @@ export async function runAgent(input: {
     state: agentState,
     context: [],
   }
+  const stopStartupWatchdog = startStartupWatchdog(runId)
 
-  try {
-    await httpAgent.runAgent({ runId, tools: runInput.tools, context: runInput.context })
-    // Ignore completion if a newer run already replaced this one.
-    if (useChatStore.getState().runId === runId) {
-      useChatStore.getState().setRunStatus('idle')
-    }
-  } catch (err) {
-    const state = useChatStore.getState()
-    if (state.runId !== runId) return
-    const message = err instanceof Error ? err.message : 'Agent run failed'
-    // Clear streaming flags so Thinking/"Analyzing…" cannot stick forever.
-    for (const msgs of Object.values(state.messagesBySession)) {
-      for (const m of msgs) {
-        if (m.streaming) state.flushStreamBuffer(m.id)
+  const runPromise = (async () => {
+    try {
+      await httpAgent.runAgent({ runId, tools: runInput.tools, context: runInput.context })
+      // Ignore completion if a newer run already replaced this one.
+      if (useChatStore.getState().runId === runId) {
+        finishLocalRun(runId, 'idle')
       }
+    } catch (err) {
+      const state = useChatStore.getState()
+      if (state.runId !== runId) return
+      const aborted =
+        err instanceof Error &&
+        (err.name === 'AbortError' || /abort/i.test(err.message))
+      if (aborted) {
+        finishLocalRun(runId, 'idle')
+        return
+      }
+      const message = err instanceof Error ? err.message : 'Agent run failed'
+      finishLocalRun(runId, 'error', message)
+    } finally {
+      stopStartupWatchdog()
+      // Belt-and-suspenders: never leave the stop button / thinking stage on
+      // if this is still the active run (hang, proxy drop, protocol reject).
+      const state = useChatStore.getState()
+      if (state.runId === runId && state.runStatus === 'running') {
+        state.clearStreamingState()
+        state.setRunStatus('idle')
+        state.setRunId(null)
+        state.clearStage()
+      }
+      if (activeRunPromise === runPromise) activeRunPromise = null
     }
-    state.setError(message)
-    state.setRunStatus('error')
-  }
+  })()
+
+  activeRunPromise = runPromise
+  await runPromise
 }
 
 /** Re-run the last user turn without duplicating the user message. */
@@ -152,9 +284,19 @@ export async function retryLastRun(sessionId: string): Promise<void> {
 }
 
 export function cancelRun(): void {
-  if (agent) agent.abortRun()
+  if (agent) {
+    try {
+      agent.abortRun()
+    } catch {
+      /* ignore */
+    }
+  }
   const chat = useChatStore.getState()
-  chat.setRunStatus('cancelled')
+  chat.clearStreamingState()
+  chat.clearStage()
+  chat.setRunStatus('idle')
+  chat.setRunId(null)
+  chat.setError(null)
   // Clear stuck tool cards (abort may skip a clean TOOL_CALL_RESULT race).
   for (const [id, tc] of Object.entries(chat.toolCalls)) {
     if (

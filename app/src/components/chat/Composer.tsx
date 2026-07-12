@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Send, Square, Paperclip, X, Loader2 } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
-import { runAgent, cancelRun } from '@app/lib/agui/client'
+import {
+  runAgent,
+  cancelRun,
+  hasInFlightRun,
+  recoverStaleRunIfNeeded,
+} from '@app/lib/agui/client'
 import {
   filterSlashCommands,
   matchSlashCommand,
@@ -35,12 +40,13 @@ export function Composer({ sessionId }: ComposerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const runStatus = useChatStore((s) => s.runStatus)
+  const runId = useChatStore((s) => s.runId)
   const setTheme = useSettingsStore((s) => s.setTheme)
   const setModel = useSettingsStore((s) => s.setModel)
   const setActivePanel = useUiStore((s) => s.setActivePanel)
   const addToast = useUiStore((s) => s.addToast)
   const navigate = useNavigate()
-  const isRunning = runStatus === 'running'
+  const isRunning = runStatus === 'running' && hasInFlightRun() && Boolean(runId)
 
   const filteredSlash = filterSlashCommands(text)
   const showSlash = slashOpen && filteredSlash.length > 0
@@ -94,6 +100,12 @@ export function Composer({ sessionId }: ComposerProps) {
     window.addEventListener('open-jarvis:composer-slash', onComposerSlash)
     return () => window.removeEventListener('open-jarvis:composer-slash', onComposerSlash)
   }, [])
+
+  useEffect(() => {
+    if (runStatus === 'running' && !runId) {
+      recoverStaleRunIfNeeded()
+    }
+  }, [runStatus, runId])
 
   const runSlash = useCallback(
     async (command: SlashCommand, args: string) => {
@@ -177,6 +189,7 @@ export function Composer({ sessionId }: ComposerProps) {
   )
 
   const submit = async () => {
+    recoverStaleRunIfNeeded()
     if (isRunning || creatingSession) return
 
     const trimmed = text.trim()

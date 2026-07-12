@@ -118,6 +118,53 @@ async function flushThinkingBuffer(opts: {
   return { thinkingStarted: opts.thinkingStarted, buffer: '' }
 }
 
+/**
+ * Close open thinking + text frames before leaving an iteration.
+ * @ag-ui/client rejects RUN_FINISHED while text messages (or tool calls) are still active,
+ * which aborts the SSE consumer and can leave the UI stuck on thinking/running.
+ */
+async function closeOpenAssistantFrames(opts: {
+  emit: EventEmitter
+  messageId: string
+  thinkingStarted: boolean
+  thinkingPending: string
+  content: string
+  fallbackContent?: string
+}): Promise<{ thinkingStarted: boolean; thinkingPending: string; content: string }> {
+  let { thinkingStarted, thinkingPending, content } = opts
+  try {
+    if (thinkingPending.trim()) {
+      const flushed = await flushThinkingBuffer({
+        emit: opts.emit,
+        messageId: opts.messageId,
+        thinkingStarted,
+        buffer: thinkingPending,
+      })
+      thinkingStarted = flushed.thinkingStarted
+      thinkingPending = flushed.buffer
+    } else {
+      thinkingPending = ''
+    }
+    if (thinkingStarted) {
+      await opts.emit({ type: EventType.THINKING_TEXT_MESSAGE_END, messageId: opts.messageId })
+      await opts.emit({ type: EventType.THINKING_END })
+      thinkingStarted = false
+    }
+    if (!content && opts.fallbackContent) {
+      content = opts.fallbackContent
+      await opts.emit({
+        type: EventType.TEXT_MESSAGE_CONTENT,
+        messageId: opts.messageId,
+        delta: opts.fallbackContent,
+      })
+    }
+    await opts.emit({ type: EventType.TEXT_MESSAGE_END, messageId: opts.messageId })
+  } catch {
+    /* best-effort close — never block abort/finish */
+  }
+  return { thinkingStarted, thinkingPending, content }
+}
+
 function toChatMessages(input: RunAgentInput, systemPrompt: string): ChatMessage[] {
   const msgs: ChatMessage[] = [{ role: 'system', content: systemPrompt }]
   for (const m of input.messages) {
@@ -451,6 +498,23 @@ export async function runNativeAgent(
 
       await emit({ type: EventType.TEXT_MESSAGE_START, messageId, role: 'assistant' })
 
+      let assistantFrameOpen = true
+      const closeAssistantFrame = async (fallbackContent?: string) => {
+        if (!assistantFrameOpen) return
+        const closed = await closeOpenAssistantFrames({
+          emit,
+          messageId,
+          thinkingStarted,
+          thinkingPending,
+          content,
+          fallbackContent,
+        })
+        thinkingStarted = closed.thinkingStarted
+        thinkingPending = closed.thinkingPending
+        content = closed.content
+        assistantFrameOpen = false
+      }
+
       try {
         for await (const delta of streamChatCompletion({
           model: ctx.profile.model,
@@ -460,7 +524,10 @@ export async function runNativeAgent(
           baseUrl: plan.route.baseUrl,
           signal,
         })) {
-          if (signal.aborted) return
+          if (signal.aborted) {
+            await closeAssistantFrame()
+            return
+          }
           if (delta.usage) {
             iterationUsage = delta.usage
           }
@@ -504,57 +571,21 @@ export async function runNativeAgent(
       } catch (err) {
         // Always close open thinking/text frames so the UI never stalls on
         // "Analyzing…" after a bridge/LLM failure mid-stream.
-        try {
-          if (thinkingPending.trim()) {
-            const flushed = await flushThinkingBuffer({
-              emit,
-              messageId,
-              thinkingStarted,
-              buffer: thinkingPending,
-            })
-            thinkingStarted = flushed.thinkingStarted
-            thinkingPending = flushed.buffer
-          }
-          if (thinkingStarted) {
-            await emit({ type: EventType.THINKING_TEXT_MESSAGE_END, messageId })
-            await emit({ type: EventType.THINKING_END })
-          }
-          if (!content) {
-            const failNote =
-              err instanceof Error ? `LLM error: ${err.message}` : 'LLM error: request failed'
-            content = failNote
-            await emit({ type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta: failNote })
-          }
-          await emit({ type: EventType.TEXT_MESSAGE_END, messageId })
-        } catch {
-          /* best-effort close */
-        }
+        const failNote =
+          err instanceof Error ? `LLM error: ${err.message}` : 'LLM error: request failed'
+        await closeAssistantFrame(content ? undefined : failNote)
         if (signal.aborted || (err instanceof Error && err.name === 'AbortError')) {
           return
         }
         throw err
       }
 
-      if (signal.aborted) return
-
-      if (thinkingPending.trim()) {
-        const flushed = await flushThinkingBuffer({
-          emit,
-          messageId,
-          thinkingStarted,
-          buffer: thinkingPending,
-        })
-        thinkingStarted = flushed.thinkingStarted
-        thinkingPending = flushed.buffer
-      } else {
-        thinkingPending = ''
-      }
-      if (thinkingStarted) {
-        await emit({ type: EventType.THINKING_TEXT_MESSAGE_END, messageId })
-        await emit({ type: EventType.THINKING_END })
+      if (signal.aborted) {
+        await closeAssistantFrame()
+        return
       }
 
-      await emit({ type: EventType.TEXT_MESSAGE_END, messageId })
+      await closeAssistantFrame()
 
       // Composer bridges sometimes put planning narration in `content` instead of
       // `reasoning_content`. Peel it into thinking for persistence / next-turn history.

@@ -85,4 +85,22 @@ describe('AG-UI run message snapshot freshness', () => {
     expect(useChatStore.getState().runStatus).toBe('idle')
     expect(useChatStore.getState().runId).toBeNull()
   })
+
+  test('late THINKING_TEXT_MESSAGE_START after idle does not revive thinking stage', () => {
+    useChatStore.getState().setRunId(null)
+    useChatStore.getState().setRunStatus('idle')
+    useChatStore.getState().clearStage()
+
+    dispatchAguiEvent(
+      {
+        type: EventType.THINKING_TEXT_MESSAGE_START,
+        messageId: 'late-think',
+        role: 'assistant',
+      } as never,
+      's1',
+    )
+
+    expect(useChatStore.getState().runStatus).toBe('idle')
+    expect(useChatStore.getState().runStage).toBeNull()
+  })
 })

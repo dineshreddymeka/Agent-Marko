@@ -48,6 +48,20 @@ function isCurrentRun(eventRunId: string | null | undefined): boolean {
   return String(eventRunId) === active
 }
 
+/** Reset in-flight streaming UI so thinking/stop cannot stick after terminal events. */
+function finalizeRunUi(chat: ReturnType<typeof useChatStore.getState>): void {
+  chat.clearStreamingState()
+  for (const [id, tc] of Object.entries(chat.toolCalls)) {
+    if (
+      tc.status === 'executing' ||
+      tc.status === 'pending' ||
+      tc.status === 'streaming-args'
+    ) {
+      chat.upsertToolCall(id, { status: 'done' })
+    }
+  }
+}
+
 export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): void {
   const chat = useChatStore.getState()
   const agentState = useAgentStateStore.getState()
@@ -70,19 +84,10 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
     case EventType.RUN_FINISHED: {
       const e = event as { runId?: string }
       if (!isCurrentRun(e.runId)) break
+      finalizeRunUi(chat)
       chat.setStage('done')
       chat.setRunStatus('idle')
       chat.setRunId(null)
-      // Finish any tools still marked executing (cancel / early finish races).
-      for (const [id, tc] of Object.entries(chat.toolCalls)) {
-        if (
-          tc.status === 'executing' ||
-          tc.status === 'pending' ||
-          tc.status === 'streaming-args'
-        ) {
-          chat.upsertToolCall(id, { status: 'done' })
-        }
-      }
       globalThis.setTimeout(() => {
         useChatStore.getState().clearStage()
       }, 1200)
@@ -90,18 +95,21 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
     }
 
     case EventType.RUN_ERROR: {
-      const e = event as RunErrorEvent
-      if (!isCurrentRun((e as { runId?: string }).runId)) break
-      chat.setError(e.message ?? 'Run failed')
-      chat.setRunStatus('error')
-      chat.setStage('error')
-      for (const msgs of Object.values(chat.messagesBySession)) {
-        for (const m of msgs) {
-          if (m.streaming) {
-            chat.flushStreamBuffer(m.id)
-            chat.flushThinkingBuffer(m.id)
-          }
-        }
+      const e = event as RunErrorEvent & { runId?: string; code?: string }
+      if (!isCurrentRun(e.runId)) break
+      const aborted =
+        e.code === 'abort' ||
+        /abort/i.test(e.message ?? '') ||
+        chat.runStatus === 'cancelled'
+      finalizeRunUi(chat)
+      if (!aborted) {
+        chat.setError(e.message ?? 'Run failed')
+        chat.setRunStatus('error')
+        chat.setStage('error')
+      } else {
+        chat.setError(null)
+        chat.setRunStatus('idle')
+        chat.clearStage()
       }
       break
     }
@@ -124,6 +132,9 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
 
     case EventType.TEXT_MESSAGE_START: {
       const e = event as TextMessageStartEvent
+      // Late SSE from an aborted/finished turn must not revive writing UI.
+      if (chat.runStatus !== 'running') break
+      if (!isCurrentRun(e.runId != null ? String(e.runId) : undefined)) break
       chat.setStage('writing')
       if (sessionId && e.messageId) {
         chat.addMessage(sessionId, {
@@ -162,6 +173,9 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
 
     case EventType.THINKING_TEXT_MESSAGE_START: {
       const e = event as ThinkingTextMessageStartEvent
+      // Late reasoning from an aborted turn must not leave the UI stuck on thinking.
+      if (chat.runStatus !== 'running') break
+      if (!isCurrentRun(e.runId != null ? String(e.runId) : undefined)) break
       chat.setStage('thinking')
       if (sessionId && e.messageId) {
         const msgId = String(e.messageId)
@@ -196,7 +210,10 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
 
     case EventType.THINKING_TEXT_MESSAGE_END: {
       const e = event as { messageId?: string }
-      if (e.messageId) chat.flushThinkingBuffer(String(e.messageId))
+      if (e.messageId) {
+        chat.flushThinkingBuffer(String(e.messageId))
+        chat.flushStreamBuffer(String(e.messageId))
+      }
       break
     }
 

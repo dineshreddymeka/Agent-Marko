@@ -66,11 +66,9 @@ export async function handleAguiRequest(req: Request): Promise<Response> {
 
       // Ensure session row exists before any run_events insert (FK run_events_session_fk).
       if (await isDatabaseAvailable()) {
-        try {
-          await sessionsRepo.ensure(input.threadId)
-        } catch (err) {
+        void sessionsRepo.ensure(input.threadId).catch((err) => {
           log.warn('Failed to ensure session before run events', { error: String(err) })
-        }
+        })
       }
 
       const sseEmit: EventEmitter = createEventRecorder((event) => {
@@ -84,23 +82,36 @@ export async function handleAguiRequest(req: Request): Promise<Response> {
         void recordEvent(input.runId, input.threadId, event)
       })
 
+      let terminalEmitted = false
       try {
         emitRunStarted(input, sseEmit as EventEmitter)
         const provider = await resolveProvider(input)
         log.info('AG-UI provider resolved', { provider: provider.id })
         await provider.run(input, sseEmit, run.controller.signal)
-        emitRunFinished(input, sseEmit as EventEmitter)
-        log.info('AG-UI run finished', {
-          durationMs: Math.round(performance.now() - started),
-          eventCount,
-          eventTypes: Object.fromEntries(eventTypes),
-        })
+        if (run.controller.signal.aborted) {
+          // Provider returned after abort without throwing. HttpAgent injects
+          // RUN_ERROR on fetch abort — do not emit RUN_FINISHED with open frames.
+          log.info('Run aborted', {
+            durationMs: Math.round(performance.now() - started),
+            eventCount,
+          })
+          terminalEmitted = true
+        } else {
+          emitRunFinished(input, sseEmit as EventEmitter)
+          terminalEmitted = true
+          log.info('AG-UI run finished', {
+            durationMs: Math.round(performance.now() - started),
+            eventCount,
+            eventTypes: Object.fromEntries(eventTypes),
+          })
+        }
       } catch (err) {
         if (run.controller.signal.aborted) {
           log.info('Run aborted', {
             durationMs: Math.round(performance.now() - started),
             eventCount,
           })
+          terminalEmitted = true
         } else {
           const message = isHermesError(err) ? err.message : String(err)
           const code = isHermesError(err) ? err.code : 'PROVIDER_ERROR'
@@ -111,8 +122,16 @@ export async function handleAguiRequest(req: Request): Promise<Response> {
             eventCount,
           })
           emitRunError(input, sseEmit as EventEmitter, message, code)
+          terminalEmitted = true
         }
       } finally {
+        if (!terminalEmitted) {
+          try {
+            emitRunFinished(input, sseEmit as EventEmitter)
+          } catch {
+            /* best-effort */
+          }
+        }
         finishRun(input.runId)
         controller.close()
       }

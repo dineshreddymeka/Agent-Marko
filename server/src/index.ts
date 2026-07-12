@@ -100,7 +100,7 @@ await boot()
 const server = Bun.serve({
   hostname: config.HOST,
   port: config.PORT,
-  async fetch(req) {
+  async fetch(req, bunServer) {
     const requestId = req.headers.get('X-Request-Id') ?? newRequestId()
     const url = new URL(req.url)
     const started = performance.now()
@@ -125,6 +125,8 @@ const server = Bun.serve({
         if (url.pathname === '/agui' && req.method === 'OPTIONS') {
           res = handleAguiOptions()
         } else if (url.pathname === '/agui' && req.method === 'POST') {
+          // AG-UI SSE can sit quiet during lm-bridge thinking/tool rounds; Bun default idleTimeout is 10s.
+          bunServer.timeout(req, 0)
           const denied = await guardRequest(req)
           if (denied) res = denied
           else res = await handleAguiRequest(req)

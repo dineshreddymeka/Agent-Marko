@@ -27,11 +27,6 @@ const BOARD_COLUMNS: { status: KanbanTaskStatus; label: string }[] = [
   { status: 'done', label: 'Done' },
 ]
 
-const ALL_STATUSES: KanbanTaskStatus[] = [
-  ...BOARD_COLUMNS.map((c) => c.status),
-  'archived',
-]
-
 const inputClass = 'w-full rounded border border-border bg-canvas px-2 py-1.5 text-sm text-fg'
 const labelClass = 'block text-xs font-medium text-fg-muted'
 const btnGhost =
@@ -273,153 +268,166 @@ export function KanbanPanel() {
       )}
 
       {!hasTasks && !showForm ? (
-        <EmptyState
-          title="No tasks yet"
-          description="Create a task to start tracking work across triage → done."
-          action={
-            <button type="button" onClick={() => setShowForm(true)} className={btnPrimary}>
-              <Plus size={12} /> New task
-            </button>
-          }
-        />
-      ) : (
-        <div className="-mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1">
-          {columns.map((col) => {
-            const tasks = tasksByStatus.get(col.status) ?? []
-            const count = counts?.[col.status] ?? tasks.length
-            return (
-              <section
-                key={col.status}
-                className="flex w-[15.5rem] shrink-0 flex-col rounded-lg border border-border bg-canvas-subtle"
-                aria-label={`${col.label} column`}
-              >
-                <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <span
-                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDotClass(col.status)}`}
-                      aria-hidden
-                    />
-                    <h3 className="truncate text-xs font-medium text-fg">{col.label}</h3>
-                  </div>
-                  <span className="rounded bg-canvas-inset px-1.5 py-0.5 text-[10px] tabular-nums text-fg-muted">
-                    {count}
-                  </span>
-                </header>
+        <div
+          className="flex items-start gap-2 rounded-md border border-border bg-canvas-subtle px-3 py-2.5"
+          role="status"
+        >
+          <p className="flex-1 text-xs text-fg-muted">
+            No tasks yet — create one to start tracking work across triage → done.
+          </p>
+          <button type="button" onClick={() => setShowForm(true)} className={btnPrimary}>
+            <Plus size={12} /> New task
+          </button>
+        </div>
+      ) : null}
 
-                <ul className="flex min-h-[7rem] flex-1 flex-col gap-2 p-2">
-                  {tasks.length === 0 ? (
-                    <li className="flex flex-1 items-center justify-center rounded border border-dashed border-border-muted px-2 py-6 text-[11px] text-fg-subtle">
-                      No cards
-                    </li>
-                  ) : (
-                    tasks.map((task) => {
-                      const prev = adjacentStatus(task.status, -1, columns)
-                      const next = adjacentStatus(task.status, 1, columns)
-                      const movingThis = move.isPending && move.variables?.id === task.id
-                      return (
-                        <li
-                          key={task.id}
-                          className="group rounded-md border border-border bg-canvas p-2.5 shadow-[var(--hermes-card-shadow)]"
-                        >
-                          <div className="mb-1.5 flex items-start justify-between gap-2">
-                            <p className="min-w-0 flex-1 text-xs font-medium leading-snug text-fg">
-                              {task.title}
-                            </p>
+      <div className="-mx-1 flex min-h-0 flex-1 gap-2.5 overflow-x-auto px-1 pb-1">
+        {columns.map((col) => {
+          const tasks = tasksByStatus.get(col.status) ?? []
+          const count = counts?.[col.status] ?? tasks.length
+          return (
+            <section
+              key={col.status}
+              className="flex max-h-[calc(100vh-14rem)] w-[15.5rem] shrink-0 flex-col rounded-lg border border-border bg-canvas-subtle"
+              aria-label={`${col.label} column`}
+            >
+              <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDotClass(col.status)}`}
+                    aria-hidden
+                  />
+                  <h3 className="truncate text-xs font-medium text-fg">{col.label}</h3>
+                </div>
+                <span className="rounded bg-canvas-inset px-1.5 py-0.5 text-[10px] tabular-nums text-fg-muted">
+                  {count}
+                </span>
+              </header>
+
+              <ul className="flex min-h-[7rem] flex-1 flex-col gap-2 overflow-y-auto p-2">
+                {tasks.length === 0 ? (
+                  <li className="flex flex-1 items-center justify-center rounded border border-dashed border-border-muted px-2 py-6 text-[11px] text-fg-subtle">
+                    No cards
+                  </li>
+                ) : (
+                  tasks.map((task) => {
+                    const prev = adjacentStatus(task.status, -1, columns)
+                    const next = adjacentStatus(task.status, 1, columns)
+                    const movingThis = move.isPending && move.variables?.id === task.id
+                    return (
+                      <li
+                        key={task.id}
+                        className="group rounded-md border border-border bg-canvas p-2.5 shadow-[var(--hermes-card-shadow)]"
+                      >
+                        <div className="mb-1.5 flex items-start justify-between gap-2">
+                          <p className="min-w-0 flex-1 text-xs font-medium leading-snug text-fg">
+                            {task.title}
+                          </p>
+                          <button
+                            type="button"
+                            title="Delete"
+                            onClick={() => {
+                              if (confirm(`Delete “${task.title}”?`)) remove.mutate(task.id)
+                            }}
+                            className="shrink-0 rounded p-0.5 text-fg-subtle opacity-0 transition-opacity hover:text-danger group-hover:opacity-100 focus:opacity-100"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+
+                        {task.body ? (
+                          <p className="mb-2 line-clamp-2 text-[11px] leading-relaxed text-fg-muted">
+                            {task.body}
+                          </p>
+                        ) : null}
+
+                        {task.blockReason ? (
+                          <p className="mb-2 rounded bg-[color-mix(in_srgb,var(--hermes-attention)_12%,transparent)] px-1.5 py-1 text-[10px] text-attention">
+                            {task.blockReason}
+                          </p>
+                        ) : null}
+
+                        {task.summary && task.status === 'done' ? (
+                          <p className="mb-2 line-clamp-2 text-[11px] text-fg-subtle">{task.summary}</p>
+                        ) : null}
+
+                        <div className="flex items-center justify-between gap-1 border-t border-border-muted pt-1.5">
+                          <div className="flex min-w-0 items-center gap-0.5">
                             <button
                               type="button"
-                              title="Delete"
-                              onClick={() => {
-                                if (confirm(`Delete “${task.title}”?`)) remove.mutate(task.id)
-                              }}
-                              className="shrink-0 rounded p-0.5 text-fg-subtle opacity-0 transition-opacity hover:text-danger group-hover:opacity-100 focus:opacity-100"
+                              title={prev ? `Move to ${kanbanTaskStatusLabel(prev)}` : undefined}
+                              disabled={!prev || move.isPending}
+                              onClick={() => prev && move.mutate({ id: task.id, status: prev })}
+                              className="rounded p-0.5 text-fg-muted hover:bg-canvas-inset hover:text-fg disabled:opacity-30"
                             >
-                              <Trash2 size={12} />
+                              <ChevronLeft size={14} />
                             </button>
-                          </div>
-
-                          {task.body ? (
-                            <p className="mb-2 line-clamp-2 text-[11px] leading-relaxed text-fg-muted">
-                              {task.body}
-                            </p>
-                          ) : null}
-
-                          {task.blockReason ? (
-                            <p className="mb-2 rounded bg-[color-mix(in_srgb,var(--hermes-attention)_12%,transparent)] px-1.5 py-1 text-[10px] text-attention">
-                              {task.blockReason}
-                            </p>
-                          ) : null}
-
-                          {task.summary && task.status === 'done' ? (
-                            <p className="mb-2 line-clamp-2 text-[11px] text-fg-subtle">{task.summary}</p>
-                          ) : null}
-
-                          <div className="flex items-center justify-between gap-1 border-t border-border-muted pt-1.5">
-                            <div className="flex items-center gap-0.5">
+                            <select
+                              value={task.status}
+                              onChange={(e) =>
+                                move.mutate({
+                                  id: task.id,
+                                  status: e.target.value as KanbanTaskStatus,
+                                })
+                              }
+                              disabled={move.isPending}
+                              className="max-w-[5.75rem] cursor-pointer truncate rounded border-0 bg-canvas-inset px-1.5 py-0.5 text-[10px] font-medium text-fg-muted outline-none hover:text-fg focus:ring-1 focus:ring-accent"
+                              aria-label={`Move ${task.title}`}
+                              title={kanbanTaskStatusLabel(task.status)}
+                            >
+                              {(
+                                [
+                                  'triage',
+                                  'todo',
+                                  'ready',
+                                  'running',
+                                  'blocked',
+                                  'done',
+                                  'archived',
+                                ] as KanbanTaskStatus[]
+                              ).map((s) => (
+                                <option key={s} value={s}>
+                                  {kanbanTaskStatusLabel(s)}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              title={next ? `Move to ${kanbanTaskStatusLabel(next)}` : undefined}
+                              disabled={!next || move.isPending}
+                              onClick={() => next && move.mutate({ id: task.id, status: next })}
+                              className="rounded p-0.5 text-fg-muted hover:bg-canvas-inset hover:text-fg disabled:opacity-30"
+                            >
+                              <ChevronRight size={14} />
+                            </button>
+                            {task.status !== 'archived' ? (
                               <button
                                 type="button"
-                                title={prev ? `Move to ${kanbanTaskStatusLabel(prev)}` : undefined}
-                                disabled={!prev || move.isPending}
-                                onClick={() => prev && move.mutate({ id: task.id, status: prev })}
-                                className="rounded p-0.5 text-fg-muted hover:bg-canvas-inset hover:text-fg disabled:opacity-30"
-                              >
-                                <ChevronLeft size={14} />
-                              </button>
-                              <select
-                                value={task.status}
-                                onChange={(e) =>
-                                  move.mutate({
-                                    id: task.id,
-                                    status: e.target.value as KanbanTaskStatus,
-                                  })
-                                }
+                                title="Archive"
                                 disabled={move.isPending}
-                                className="max-w-[6.75rem] cursor-pointer rounded border-0 bg-transparent py-0.5 text-[11px] text-fg-muted outline-none hover:text-fg focus:ring-1 focus:ring-accent"
-                                aria-label={`Move ${task.title}`}
+                                onClick={() => move.mutate({ id: task.id, status: 'archived' })}
+                                className="ml-0.5 rounded p-0.5 text-fg-subtle opacity-0 hover:text-fg group-hover:opacity-100 focus:opacity-100"
                               >
-                                {ALL_STATUSES.map((s) => (
-                                  <option key={s} value={s}>
-                                    {kanbanTaskStatusLabel(s)}
-                                  </option>
-                                ))}
-                              </select>
-                              <button
-                                type="button"
-                                title={next ? `Move to ${kanbanTaskStatusLabel(next)}` : undefined}
-                                disabled={!next || move.isPending}
-                                onClick={() => next && move.mutate({ id: task.id, status: next })}
-                                className="rounded p-0.5 text-fg-muted hover:bg-canvas-inset hover:text-fg disabled:opacity-30"
-                              >
-                                <ChevronRight size={14} />
+                                <Archive size={12} />
                               </button>
-                              {task.status !== 'archived' ? (
-                                <button
-                                  type="button"
-                                  title="Archive"
-                                  disabled={move.isPending}
-                                  onClick={() => move.mutate({ id: task.id, status: 'archived' })}
-                                  className="ml-0.5 rounded p-0.5 text-fg-subtle opacity-0 hover:text-fg group-hover:opacity-100 focus:opacity-100"
-                                >
-                                  <Archive size={12} />
-                                </button>
-                              ) : null}
-                              {movingThis ? (
-                                <Loader2 size={12} className="ml-0.5 animate-spin text-fg-muted" />
-                              ) : null}
-                            </div>
-                            <span className="shrink-0 text-[10px] text-fg-subtle">
-                              {formatRelativeTime(task.updatedAt)}
-                            </span>
+                            ) : null}
+                            {movingThis ? (
+                              <Loader2 size={12} className="ml-0.5 animate-spin text-fg-muted" />
+                            ) : null}
                           </div>
-                        </li>
-                      )
-                    })
-                  )}
-                </ul>
-              </section>
-            )
-          })}
-        </div>
-      )}
+                          <span className="shrink-0 text-[10px] text-fg-subtle">
+                            {formatRelativeTime(task.updatedAt)}
+                          </span>
+                        </div>
+                      </li>
+                    )
+                  })
+                )}
+              </ul>
+            </section>
+          )
+        })}
+      </div>
     </div>
   )
 }

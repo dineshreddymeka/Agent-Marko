@@ -36,7 +36,7 @@ function toDto(row: typeof runEvents.$inferSelect): RunEventRecord {
     seq: row.seq,
     eventType: row.eventType,
     payload,
-    createdAt: row.createdAt.toISOString(),
+    createdAt: (row.createdAt ?? new Date()).toISOString(),
   }
 }
 

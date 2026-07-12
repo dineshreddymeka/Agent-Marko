@@ -49,17 +49,106 @@ describe('agui dispatcher Phase 4 events', () => {
     expect(useChatStore.getState().error).toBe('boom')
   })
 
+  test('RUN_FINISHED clears streaming flags and idle run', () => {
+    useChatStore.getState().setRunId('r1')
+    useChatStore.getState().setRunStatus('running')
+    useChatStore.getState().setStage('thinking')
+    useChatStore.getState().addMessage('s1', {
+      id: 'm1',
+      sessionId: 's1',
+      runId: 'r1',
+      role: 'assistant',
+      content: 'partial',
+      thinking: 'hmm',
+      streaming: true,
+      createdAt: new Date().toISOString(),
+    })
+
+    dispatchAguiEvent(
+      { type: EventType.RUN_FINISHED, threadId: 's1', runId: 'r1' } as never,
+      's1',
+    )
+
+    const state = useChatStore.getState()
+    expect(state.runStatus).toBe('idle')
+    expect(state.runId).toBeNull()
+    expect(state.messagesBySession.s1?.[0]?.streaming).toBe(false)
+  })
+
+  test('RUN_ERROR abort code clears running without error banner', () => {
+    useChatStore.getState().setRunId('r1')
+    useChatStore.getState().setRunStatus('running')
+    useChatStore.getState().setStage('thinking')
+
+    dispatchAguiEvent(
+      {
+        type: EventType.RUN_ERROR,
+        message: 'Request aborted',
+        code: 'abort',
+        runId: 'r1',
+      } as never,
+      's1',
+    )
+
+    const state = useChatStore.getState()
+    expect(state.runStatus).toBe('idle')
+    expect(state.error).toBeNull()
+    expect(state.runStage).toBeNull()
+  })
+
+  test('thinking text without THINKING_START still settles on RUN_FINISHED', () => {
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+      cb(0)
+      return 0
+    }) as typeof requestAnimationFrame
+
+    useChatStore.getState().setRunId('r1')
+    useChatStore.getState().setRunStatus('running')
+
+    dispatchAguiEvent(
+      {
+        type: EventType.THINKING_TEXT_MESSAGE_START,
+        messageId: 'm1',
+        role: 'assistant',
+      } as never,
+      's1',
+    )
+    dispatchAguiEvent(
+      {
+        type: EventType.THINKING_TEXT_MESSAGE_CONTENT,
+        messageId: 'm1',
+        delta: 'plan',
+      } as never,
+      's1',
+    )
+    expect(useChatStore.getState().runStage?.kind).toBe('thinking')
+
+    dispatchAguiEvent(
+      { type: EventType.RUN_FINISHED, threadId: 's1', runId: 'r1' } as never,
+      's1',
+    )
+
+    const state = useChatStore.getState()
+    expect(state.runStatus).toBe('idle')
+    expect(state.messagesBySession.s1?.[0]?.thinking).toContain('plan')
+    expect(state.messagesBySession.s1?.[0]?.streaming).toBe(false)
+  })
+
   test('TEXT_MESSAGE stream appends content', () => {
     globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
       cb(0)
       return 0
     }) as typeof requestAnimationFrame
 
+    useChatStore.getState().setRunId('r1')
+    useChatStore.getState().setRunStatus('running')
+
     dispatchAguiEvent(
       {
         type: EventType.TEXT_MESSAGE_START,
         messageId: 'm1',
         role: 'assistant',
+        runId: 'r1',
       } as never,
       's1',
     )
@@ -68,6 +157,7 @@ describe('agui dispatcher Phase 4 events', () => {
         type: EventType.TEXT_MESSAGE_CONTENT,
         messageId: 'm1',
         delta: 'Hello',
+        runId: 'r1',
       } as never,
       's1',
     )
