@@ -10,6 +10,7 @@ export async function handleDebug(req: Request, path: string): Promise<Response 
     const { queueDepth } = await import('../vector/indexer')
     const { getComputePoolStatus } = await import('../compute/pool')
     const { activeCronCount } = await import('../cron/scheduler')
+    const { getCleanupStatus } = await import('../cleanup/worker')
 
     const dbOk = await pingDatabase()
     const { getDbMetrics } = await import('../db/client')
@@ -45,6 +46,7 @@ export async function handleDebug(req: Request, path: string): Promise<Response 
         autoSso: config.MICROSOFT_SSO_AUTO,
       },
       llm: getLlmDebugInfo(),
+      cleanup: getCleanupStatus(),
       memory: process.memoryUsage(),
       uptime: process.uptime(),
     })
