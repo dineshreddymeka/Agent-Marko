@@ -50,6 +50,16 @@ function toAguiMessages(
   })
 }
 
+/**
+ * Build AG-UI messages from a fresh Zustand snapshot.
+ * Never reuse a pre-mutation `getState()` handle — Zustand state is immutable,
+ * so reading `messagesBySession` off a stale snapshot omits the optimistic
+ * user turn and makes the LLM answer one turn behind.
+ */
+export function getAguiMessagesForSession(sessionId: string): Message[] {
+  return toAguiMessages(useChatStore.getState().messagesBySession[sessionId] ?? [])
+}
+
 export async function runAgent(input: {
   sessionId: string
   content: string
@@ -59,6 +69,13 @@ export async function runAgent(input: {
 }): Promise<void> {
   const { sessionId, content, reuseLastUserMessage } = input
   currentSessionId = sessionId
+
+  // Cancel any in-flight run so late SSE chunks cannot attach to the next turn.
+  const prior = useChatStore.getState()
+  if (prior.runStatus === 'running' && agent) {
+    agent.abortRun()
+  }
+
   const runId = generateId()
   const chat = useChatStore.getState()
   const agentState = useAgentStateStore.getState().state
@@ -68,6 +85,8 @@ export async function runAgent(input: {
   chat.setRunStatus('running')
   chat.setError(null)
   chat.clearRunSteps()
+  chat.clearStage()
+  chat.setStage('starting')
 
   if (!reuseLastUserMessage) {
     const userMessage = {
@@ -81,8 +100,9 @@ export async function runAgent(input: {
     chat.addMessage(sessionId, userMessage)
   }
 
-  const allMessages = chat.messagesBySession[sessionId] ?? []
-  httpAgent.setMessages(toAguiMessages(allMessages))
+  // Fresh snapshot after addMessage — `chat` still points at the pre-add state.
+  const allMessages = getAguiMessagesForSession(sessionId)
+  httpAgent.setMessages(allMessages)
   httpAgent.setState(agentState)
 
   const runInput: RunAgentInput = {
@@ -96,10 +116,14 @@ export async function runAgent(input: {
 
   try {
     await httpAgent.runAgent({ runId, tools: runInput.tools, context: runInput.context })
-    chat.setRunStatus('idle')
+    // Ignore completion if a newer run already replaced this one.
+    if (useChatStore.getState().runId === runId) {
+      useChatStore.getState().setRunStatus('idle')
+    }
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Agent run failed'
     const state = useChatStore.getState()
+    if (state.runId !== runId) return
+    const message = err instanceof Error ? err.message : 'Agent run failed'
     // Clear streaming flags so Thinking/"Analyzing…" cannot stick forever.
     for (const msgs of Object.values(state.messagesBySession)) {
       for (const m of msgs) {

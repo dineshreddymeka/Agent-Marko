@@ -40,6 +40,14 @@ import type { ChatMessage } from '@app/stores/chat'
 import type { AgentState } from '@app/types/hermes'
 import type { Operation } from 'fast-json-patch'
 
+/** Ignore lifecycle events from a superseded/aborted run. */
+function isCurrentRun(eventRunId: string | null | undefined): boolean {
+  if (eventRunId == null || eventRunId === '') return true
+  const active = useChatStore.getState().runId
+  if (active == null) return true
+  return String(eventRunId) === active
+}
+
 export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): void {
   const chat = useChatStore.getState()
   const agentState = useAgentStateStore.getState()
@@ -49,15 +57,19 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
   switch (event.type) {
     case EventType.RUN_STARTED: {
       const e = event as RunStartedEvent
+      // Client already set runId before the request; ignore late STARTED from an old run.
+      if (!isCurrentRun(e.runId)) break
       chat.setRunStatus('running')
-      chat.setRunId(e.runId ?? null)
+      chat.setRunId(e.runId ?? chat.runId)
       chat.setError(null)
       chat.clearStage()
       chat.setStage('starting')
       break
     }
 
-    case EventType.RUN_FINISHED:
+    case EventType.RUN_FINISHED: {
+      const e = event as { runId?: string }
+      if (!isCurrentRun(e.runId)) break
       chat.setStage('done')
       chat.setRunStatus('idle')
       chat.setRunId(null)
@@ -71,13 +83,15 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
           chat.upsertToolCall(id, { status: 'done' })
         }
       }
-      window.setTimeout(() => {
+      globalThis.setTimeout(() => {
         useChatStore.getState().clearStage()
       }, 1200)
       break
+    }
 
     case EventType.RUN_ERROR: {
       const e = event as RunErrorEvent
+      if (!isCurrentRun((e as { runId?: string }).runId)) break
       chat.setError(e.message ?? 'Run failed')
       chat.setRunStatus('error')
       chat.setStage('error')
