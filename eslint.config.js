@@ -18,7 +18,13 @@ export default tseslint.config(
       'react-refresh': reactRefresh,
     },
     rules: {
-      ...reactHooks.configs.recommended.rules,
+      // Keep the classic react-hooks surface. Plugin v7's "recommended" enables
+      // React Compiler rules (set-state-in-effect, refs, purity, …) as errors and
+      // would fail lint across the existing app; adopt those separately.
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+      // eslint 10 recommended; existing code has intentional reassignment patterns.
+      'no-useless-assignment': 'off',
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
     },
