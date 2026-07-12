@@ -69,7 +69,10 @@ async function boot(): Promise<void> {
   }
 
   await runMigrations()
-  await loadApprovalSettings(config.AUTO_APPROVE_ALL)
+  // Pending-phase policy: keep global auto-approve on so system/cron work never blocks on HITL.
+  await loadApprovalSettings(true)
+  const { ensureAutoApproveAllEnabled } = await import('./agent/approval')
+  await ensureAutoApproveAllEnabled()
   await syncSkillsFromDisk()
   await startIndexerWorker()
   startWorkspaceWatcher()

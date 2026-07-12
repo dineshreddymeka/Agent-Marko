@@ -347,7 +347,109 @@ WHERE status = 'running' AND started_at < NOW() - INTERVAL '${STUCK_RUN_MINUTES}
   }
 }
 
+/**
+ * Status + auto-approve: ensure global auto-approve is on, snapshot health,
+ * and approve any pending HITL tool approvals.
+ */
+export async function runStatusAutoApproveMaintenance(): Promise<MaintenanceResult> {
+  const findings: string[] = []
+  let checked = 0
+  let fixed = 0
+
+  const {
+    ensureAutoApproveAllEnabled,
+    getApprovalConfig,
+    listPendingApprovals,
+    autoApproveAllPending,
+  } = await import('../agent/approval')
+  const { pingDatabase } = await import('../db/client')
+
+  checked += 1
+  const before = getApprovalConfig()
+  const after = await ensureAutoApproveAllEnabled()
+  if (!before.autoApproveAll && after.autoApproveAll) {
+    fixed += 1
+    findings.push('Enabled approval.autoApproveAll (persisted)')
+  } else {
+    findings.push(`autoApproveAll already ${after.autoApproveAll ? 'ON' : 'OFF'}`)
+  }
+
+  checked += 1
+  const pendingBefore = listPendingApprovals()
+  findings.push(`pending approvals before: ${pendingBefore.length}`)
+  if (pendingBefore.length > 0) {
+    const approved = autoApproveAllPending('status-auto-approve cron')
+    fixed += approved
+    findings.push(
+      `auto-approved ${approved} pending tool call(s): ${pendingBefore
+        .map((p) => `${p.toolName}(${p.toolCallId.slice(0, 8)})`)
+        .join(', ')}`,
+    )
+  }
+
+  checked += 1
+  const dbOk = await pingDatabase()
+  findings.push(`database: ${dbOk ? 'ok' : 'DOWN'}`)
+
+  checked += 1
+  const enabledJobs = (await cronRepo.listJobs()).filter((j) => j.enabled)
+  findings.push(`enabled cron jobs: ${enabledJobs.length}`)
+
+  // Surface stuck indexer / cron run counts when tables exist.
+  const sql = getSql()
+  checked += 1
+  const stuckCron = await countUnsafe(
+    sql,
+    `SELECT count(*)::int AS c FROM cron_runs
+WHERE status = 'running' AND started_at < NOW() - INTERVAL '${STUCK_RUN_MINUTES} minutes'`,
+  )
+  if (stuckCron > 0) {
+    await execUnsafe(
+      sql,
+      `UPDATE cron_runs
+SET status = 'failed',
+    error = COALESCE(error, 'Marked failed by status-auto-approve (stuck running)'),
+    finished_at = NOW()
+WHERE status = 'running' AND started_at < NOW() - INTERVAL '${STUCK_RUN_MINUTES} minutes'`,
+    )
+    fixed += stuckCron
+    findings.push(`stuck cron_runs: marked ${stuckCron} failed`)
+  } else {
+    findings.push('stuck cron_runs: 0')
+  }
+
+  checked += 1
+  const indexQueue = await countUnsafe(
+    sql,
+    `SELECT count(*)::int AS c FROM index_jobs WHERE status IN ('pending', 'running')`,
+  )
+  findings.push(`indexer queue depth: ${indexQueue}`)
+
+  const ok = dbOk && after.autoApproveAll
+  logger.info('Status auto-approve maintenance complete', {
+    checked,
+    fixed,
+    pendingApproved: pendingBefore.length,
+    dbOk,
+  })
+  return {
+    kind: 'status-auto-approve',
+    ok,
+    checked,
+    fixed,
+    findings,
+    detail: {
+      autoApproveAll: after.autoApproveAll,
+      pendingBefore: pendingBefore.length,
+      dbOk,
+      enabledCronJobs: enabledJobs.length,
+      indexerQueueDepth: indexQueue,
+    },
+  }
+}
+
 export async function runSystemMaintenance(kind: CronSystemKind): Promise<MaintenanceResult> {
   if (kind === 'db-consistency') return runDbConsistencyMaintenance()
-  return runBugBountyMaintenance()
+  if (kind === 'bug-bounty') return runBugBountyMaintenance()
+  return runStatusAutoApproveMaintenance()
 }

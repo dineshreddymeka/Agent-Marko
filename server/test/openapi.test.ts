@@ -107,6 +107,8 @@ export const ENDPOINT_INVENTORY: Array<{ method: string; path: string }> = [
   // Approval
   { method: 'get', path: '/api/approval/config' },
   { method: 'put', path: '/api/approval/config' },
+  { method: 'get', path: '/api/approval/pending' },
+  { method: 'post', path: '/api/approval/auto-approve-pending' },
   { method: 'post', path: '/api/approval/resolve' },
   // Auth (mount + concrete login paths)
   { method: 'get', path: '/api/auth/{path}' },

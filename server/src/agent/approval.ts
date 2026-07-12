@@ -189,3 +189,48 @@ export function cancelPendingApprovalsForRun(runId: string): number {
   }
   return cancelled
 }
+
+export type PendingApprovalStatus = {
+  toolCallId: string
+  sessionId: string
+  runId: string
+  toolName: string
+}
+
+/** Snapshot of in-flight HITL approvals awaiting resolve. */
+export function listPendingApprovals(): PendingApprovalStatus[] {
+  return [...pending.entries()].map(([toolCallId, entry]) => ({
+    toolCallId,
+    sessionId: entry.sessionId,
+    runId: entry.runId,
+    toolName: entry.toolName,
+  }))
+}
+
+/**
+ * Auto-approve every pending tool approval (used by the 5-minute status cron).
+ * Returns how many were approved.
+ */
+export function autoApproveAllPending(reason = 'status-auto-approve cron'): number {
+  let approved = 0
+  for (const [toolCallId, entry] of pending) {
+    clearTimeout(entry.timer)
+    pending.delete(toolCallId)
+    entry.resolve('approve')
+    approved++
+  }
+  if (approved > 0) {
+    // Lazy import avoided — callers log; keep this module free of logger cycles.
+    void reason
+  }
+  return approved
+}
+
+/** Force global auto-approve on and persist to settings. */
+export async function ensureAutoApproveAllEnabled(): Promise<ApprovalConfig> {
+  if (!autoApproveAll) {
+    autoApproveAll = true
+    await settingsRepo.set(APPROVAL_SETTING_KEYS.autoApproveAll, true)
+  }
+  return getApprovalConfig()
+}

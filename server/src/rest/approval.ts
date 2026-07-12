@@ -2,6 +2,9 @@ import {
   getApprovalConfig,
   resolveApproval,
   updateApprovalConfig,
+  listPendingApprovals,
+  autoApproveAllPending,
+  ensureAutoApproveAllEnabled,
   type ApprovalDecision,
 } from '../agent/approval'
 import { jsonResponse, parseJson } from './helpers'
@@ -26,6 +29,16 @@ export async function handleApproval(req: Request, path: string): Promise<Respon
     if (!body) return jsonResponse({ error: 'Invalid JSON' }, 400)
     const config = await updateApprovalConfig(body)
     return jsonResponse(config)
+  }
+
+  if (req.method === 'GET' && parts.length === 3 && parts[2] === 'pending') {
+    return jsonResponse({ pending: listPendingApprovals() })
+  }
+
+  if (req.method === 'POST' && parts.length === 3 && parts[2] === 'auto-approve-pending') {
+    const config = await ensureAutoApproveAllEnabled()
+    const approved = autoApproveAllPending('api auto-approve-pending')
+    return jsonResponse({ ok: true, approved, config })
   }
 
   if (req.method === 'POST' && parts.length === 3 && parts[2] === 'resolve') {

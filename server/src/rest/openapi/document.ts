@@ -26,7 +26,7 @@ export const openApiTags = [
   {
     name: 'Cron',
     description:
-      'Scheduled tasks. Built-in **DB Consistency** and **Bug Bounty** jobs seed on boot at `*/5 * * * *` and auto-fix safe issues (`GET /api/cron/system`).',
+      'Scheduled tasks. Built-in **DB Consistency**, **Bug Bounty**, and **Status Auto-Approve** jobs seed on boot at `*/5 * * * *` (check → auto-fix / auto-approve) (`GET /api/cron/system`).',
   },
   { name: 'Cowork', description: 'Open Cowork desktop work requests' },
   { name: 'Office/Briefing', description: 'Microsoft Graph calendar briefing' },
@@ -58,7 +58,7 @@ export function buildOpenApiDocument() {
         '**Database:** Resource schemas include `x-db-table` pointing at Drizzle tables in `server/src/db/schema.ts`.',
         'See `docs/DATABASE-DESIGN.md` for the ERD/narrative companion.',
         '',
-        '**System maintenance cron:** On boot the scheduler seeds **DB Consistency** (`systemKind=db-consistency`) and **Bug Bounty** (`systemKind=bug-bounty`) every 5 minutes. They check then auto-fix safe integrity/hygiene issues; results land in `cron_runs.detail.maintenance`. See `GET /api/cron/system`.',
+        '**System maintenance cron:** On boot the scheduler seeds **DB Consistency**, **Bug Bounty**, and **Status Auto-Approve** every 5 minutes. They check then auto-fix / auto-approve pending issues; results land in `cron_runs.detail.maintenance`. See `GET /api/cron/system`.',
         '',
         'Interactive docs: `/api/docs` · Machine-readable: `/api/openapi.json`.',
       ].join('\n'),

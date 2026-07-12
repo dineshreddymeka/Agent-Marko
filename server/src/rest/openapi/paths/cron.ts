@@ -9,9 +9,9 @@ const cronWorkflowSchema = {
     intent: { type: 'string' },
     systemKind: {
       type: 'string',
-      enum: ['db-consistency', 'bug-bounty'],
+      enum: ['db-consistency', 'bug-bounty', 'status-auto-approve'],
       description:
-        'Built-in maintenance runner. `db-consistency` repairs orphans/stale bindings/stuck runs and prunes old events. `bug-bounty` runs security hygiene and auto-fixes safe issues.',
+        'Built-in maintenance runner. `db-consistency` repairs orphans/stale bindings/stuck runs and prunes old events. `bug-bounty` runs security hygiene and auto-fixes safe issues. `status-auto-approve` ensures autoApproveAll is on and auto-approves any pending HITL approvals.',
     },
     timezone: { type: 'string', default: 'UTC' },
     mcpServerIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
@@ -36,7 +36,7 @@ export const cronPaths = {
       tags: ['Cron'],
       summary: 'List scheduled tasks (cron jobs)',
       description:
-        'Includes user jobs and built-in system maintenance jobs (DB Consistency, Bug Bounty) when seeded.',
+        'Includes user jobs and built-in system maintenance jobs (DB Consistency, Bug Bounty, Status Auto-Approve) when seeded.',
       security: bearerOrSession,
       parameters: [
         { name: 'mcpServerId', in: 'query', schema: { type: 'string', format: 'uuid' } },
@@ -76,8 +76,8 @@ export const cronPaths = {
       tags: ['Cron'],
       summary: 'List built-in system maintenance jobs',
       description: [
-        'Returns the catalog and live rows for **DB Consistency** and **Bug Bounty**.',
-        'Both are seeded on server boot at `*/5 * * * *` and auto-fix safe issues when they fire.',
+        'Returns the catalog and live rows for **DB Consistency**, **Bug Bounty**, and **Status Auto-Approve**.',
+        'All are seeded on server boot at `*/5 * * * *` (check → auto-fix / auto-approve).',
         'Use `POST /api/cron/{id}/run` to trigger immediately.',
       ].join(' '),
       security: bearerOrSession,

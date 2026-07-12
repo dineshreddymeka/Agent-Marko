@@ -31,7 +31,7 @@ export const cronWorkflowRetrySchema = z.object({
 })
 
 /** Built-in maintenance jobs (deterministic runners; not LLM prompts). */
-export const cronSystemKindSchema = z.enum(['db-consistency', 'bug-bounty'])
+export const cronSystemKindSchema = z.enum(['db-consistency', 'bug-bounty', 'status-auto-approve'])
 export type CronSystemKind = z.infer<typeof cronSystemKindSchema>
 
 export const cronWorkflowSchema = z.object({

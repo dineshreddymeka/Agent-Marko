@@ -47,6 +47,8 @@ describe('cron workflow zod schema', () => {
     expect(db.systemKind).toBe('db-consistency')
     const bounty = cronWorkflowSchema.parse({ version: 1, systemKind: 'bug-bounty' })
     expect(bounty.systemKind).toBe('bug-bounty')
+    const status = cronWorkflowSchema.parse({ version: 1, systemKind: 'status-auto-approve' })
+    expect(status.systemKind).toBe('status-auto-approve')
     expect(cronWorkflowSchema.safeParse({ version: 1, systemKind: 'other' }).success).toBe(false)
   })
 

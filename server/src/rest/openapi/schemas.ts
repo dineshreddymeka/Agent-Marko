@@ -160,9 +160,9 @@ export const schemas: Record<string, JsonSchema> = {
       intent: { type: 'string' },
       systemKind: {
         type: 'string',
-        enum: ['db-consistency', 'bug-bounty'],
+        enum: ['db-consistency', 'bug-bounty', 'status-auto-approve'],
         description:
-          'When set, cron fires a check-and-fix maintenance handler instead of an LLM agent turn.',
+          'When set, cron fires a check-and-fix / status auto-approve maintenance handler instead of an LLM agent turn.',
       },
       timezone: { type: 'string', default: 'UTC' },
       mcpServerIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
@@ -228,7 +228,7 @@ export const schemas: Record<string, JsonSchema> = {
   CronMaintenanceResult: {
     type: 'object',
     properties: {
-      kind: { type: 'string', enum: ['db-consistency', 'bug-bounty'] },
+      kind: { type: 'string', enum: ['db-consistency', 'bug-bounty', 'status-auto-approve'] },
       ok: { type: 'boolean' },
       checked: { type: 'integer' },
       fixed: { type: 'integer' },
@@ -251,7 +251,7 @@ export const schemas: Record<string, JsonSchema> = {
           type: 'object',
           properties: {
             name: { type: 'string' },
-            kind: { type: 'string', enum: ['db-consistency', 'bug-bounty'] },
+            kind: { type: 'string', enum: ['db-consistency', 'bug-bounty', 'status-auto-approve'] },
             schedule: { type: 'string' },
             prompt: { type: 'string' },
           },

@@ -1,12 +1,12 @@
 /**
  * Seed + identify built-in maintenance cron jobs (every 5 minutes by default).
- * These run deterministic check-and-fix handlers — not LLM prompts.
+ * These run deterministic check-and-fix / auto-approve handlers — not LLM prompts.
  */
 import type { CronSystemKind, CronWorkflow } from '@hermes/shared'
 import { cronRepo } from '../db/repositories/cron'
 import { logger } from '../log'
 
-/** Default cadence for DB consistency + bug-bounty jobs. */
+/** Default cadence for all system maintenance jobs. */
 export const SYSTEM_CRON_SCHEDULE = '*/5 * * * *'
 
 export const SYSTEM_CRON_JOBS: Array<{
@@ -25,6 +25,12 @@ export const SYSTEM_CRON_JOBS: Array<{
     kind: 'bug-bounty',
     prompt:
       'System maintenance: run security hygiene (path jail, XSS HTML), clear stale bindings, fail stuck runs, and auto-fix safe issues.',
+  },
+  {
+    name: 'Status Auto-Approve',
+    kind: 'status-auto-approve',
+    prompt:
+      'System maintenance: ensure global auto-approve is on, check pending HITL approvals / health status, and auto-approve anything waiting.',
   },
 ]
 
@@ -45,13 +51,15 @@ export function isSystemCronJob(job: {
   workflow?: { systemKind?: CronSystemKind | null }
 }): CronSystemKind | null {
   const kind = job.workflow?.systemKind
-  if (kind === 'db-consistency' || kind === 'bug-bounty') return kind
+  if (kind === 'db-consistency' || kind === 'bug-bounty' || kind === 'status-auto-approve') {
+    return kind
+  }
   const byName = SYSTEM_CRON_JOBS.find((j) => j.name === job.name)
   return byName?.kind ?? null
 }
 
 /**
- * Ensure DB Consistency + Bug Bounty jobs exist on the default 5-minute schedule.
+ * Ensure system maintenance jobs exist on the default 5-minute schedule.
  * Idempotent: updates schedule/workflow if a same-named row already exists.
  */
 export async function ensureSystemCronJobs(): Promise<string[]> {

@@ -3,7 +3,7 @@
   "info": {
     "title": "Open Jarvis API",
     "version": "0.1.0",
-    "description": "REST + AG-UI HTTP contract for Open Jarvis (Hermes UI).\n\n**Auth:** Prefer the better-auth session cookie, or `Authorization: Bearer hrm_*` API tokens.\nWhen `HOST=127.0.0.1` and `ALLOW_SIGNUP=false`, localhost requests bypass auth (dev-only).\n\n**Database:** Resource schemas include `x-db-table` pointing at Drizzle tables in `server/src/db/schema.ts`.\nSee `docs/DATABASE-DESIGN.md` for the ERD/narrative companion.\n\n**System maintenance cron:** On boot the scheduler seeds **DB Consistency** (`systemKind=db-consistency`) and **Bug Bounty** (`systemKind=bug-bounty`) every 5 minutes. They check then auto-fix safe integrity/hygiene issues; results land in `cron_runs.detail.maintenance`. See `GET /api/cron/system`.\n\nInteractive docs: `/api/docs` · Machine-readable: `/api/openapi.json`."
+    "description": "REST + AG-UI HTTP contract for Open Jarvis (Hermes UI).\n\n**Auth:** Prefer the better-auth session cookie, or `Authorization: Bearer hrm_*` API tokens.\nWhen `HOST=127.0.0.1` and `ALLOW_SIGNUP=false`, localhost requests bypass auth (dev-only).\n\n**Database:** Resource schemas include `x-db-table` pointing at Drizzle tables in `server/src/db/schema.ts`.\nSee `docs/DATABASE-DESIGN.md` for the ERD/narrative companion.\n\n**System maintenance cron:** On boot the scheduler seeds **DB Consistency**, **Bug Bounty**, and **Status Auto-Approve** every 5 minutes. They check then auto-fix / auto-approve pending issues; results land in `cron_runs.detail.maintenance`. See `GET /api/cron/system`.\n\nInteractive docs: `/api/docs` · Machine-readable: `/api/openapi.json`."
   },
   "servers": [
     {
@@ -30,7 +30,7 @@
     },
     {
       "name": "Cron",
-      "description": "Scheduled tasks. Built-in **DB Consistency** and **Bug Bounty** jobs seed on boot at `*/5 * * * *` and auto-fix safe issues (`GET /api/cron/system`)."
+      "description": "Scheduled tasks. Built-in **DB Consistency**, **Bug Bounty**, and **Status Auto-Approve** jobs seed on boot at `*/5 * * * *` (check → auto-fix / auto-approve) (`GET /api/cron/system`)."
     },
     {
       "name": "Cowork",
@@ -1885,7 +1885,7 @@
           "Cron"
         ],
         "summary": "List scheduled tasks (cron jobs)",
-        "description": "Includes user jobs and built-in system maintenance jobs (DB Consistency, Bug Bounty) when seeded.",
+        "description": "Includes user jobs and built-in system maintenance jobs (DB Consistency, Bug Bounty, Status Auto-Approve) when seeded.",
         "security": [
           {
             "SessionCookie": []
@@ -2022,9 +2022,10 @@
                         "type": "string",
                         "enum": [
                           "db-consistency",
-                          "bug-bounty"
+                          "bug-bounty",
+                          "status-auto-approve"
                         ],
-                        "description": "Built-in maintenance runner. `db-consistency` repairs orphans/stale bindings/stuck runs and prunes old events. `bug-bounty` runs security hygiene and auto-fixes safe issues."
+                        "description": "Built-in maintenance runner. `db-consistency` repairs orphans/stale bindings/stuck runs and prunes old events. `bug-bounty` runs security hygiene and auto-fixes safe issues. `status-auto-approve` ensures autoApproveAll is on and auto-approves any pending HITL approvals."
                       },
                       "timezone": {
                         "type": "string",
@@ -2138,7 +2139,7 @@
           "Cron"
         ],
         "summary": "List built-in system maintenance jobs",
-        "description": "Returns the catalog and live rows for **DB Consistency** and **Bug Bounty**. Both are seeded on server boot at `*/5 * * * *` and auto-fix safe issues when they fire. Use `POST /api/cron/{id}/run` to trigger immediately.",
+        "description": "Returns the catalog and live rows for **DB Consistency**, **Bug Bounty**, and **Status Auto-Approve**. All are seeded on server boot at `*/5 * * * *` (check → auto-fix / auto-approve). Use `POST /api/cron/{id}/run` to trigger immediately.",
         "security": [
           {
             "SessionCookie": []
@@ -2423,9 +2424,10 @@
                         "type": "string",
                         "enum": [
                           "db-consistency",
-                          "bug-bounty"
+                          "bug-bounty",
+                          "status-auto-approve"
                         ],
-                        "description": "Built-in maintenance runner. `db-consistency` repairs orphans/stale bindings/stuck runs and prunes old events. `bug-bounty` runs security hygiene and auto-fixes safe issues."
+                        "description": "Built-in maintenance runner. `db-consistency` repairs orphans/stale bindings/stuck runs and prunes old events. `bug-bounty` runs security hygiene and auto-fixes safe issues. `status-auto-approve` ensures autoApproveAll is on and auto-approves any pending HITL approvals."
                       },
                       "timezone": {
                         "type": "string",
@@ -6151,6 +6153,7 @@
           "Approval"
         ],
         "summary": "Get tool approval config",
+        "description": "Pending phases run with `autoApproveAll=true`. Status Auto-Approve cron re-enforces this every 5 minutes.",
         "security": [
           {
             "SessionCookie": []
@@ -6232,6 +6235,171 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApprovalConfig"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/approval/pending": {
+      "get": {
+        "tags": [
+          "Approval"
+        ],
+        "summary": "List pending HITL tool approvals",
+        "description": "In-memory approvals waiting for resolve. The Status Auto-Approve cron (`*/5 * * * *`) auto-approves these.",
+        "security": [
+          {
+            "SessionCookie": []
+          },
+          {
+            "BearerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "pending": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "toolCallId": {
+                            "type": "string"
+                          },
+                          "sessionId": {
+                            "type": "string"
+                          },
+                          "runId": {
+                            "type": "string"
+                          },
+                          "toolName": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "toolCallId",
+                          "sessionId",
+                          "runId",
+                          "toolName"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "pending"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/approval/auto-approve-pending": {
+      "post": {
+        "tags": [
+          "Approval"
+        ],
+        "summary": "Enable autoApproveAll and approve all pending now",
+        "description": "Same action the Status Auto-Approve system cron performs every 5 minutes.",
+        "security": [
+          {
+            "SessionCookie": []
+          },
+          {
+            "BearerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "approved": {
+                      "type": "integer"
+                    },
+                    "config": {
+                      "$ref": "#/components/schemas/ApprovalConfig"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "approved",
+                    "config"
+                  ]
                 }
               }
             }
@@ -7024,9 +7192,10 @@
             "type": "string",
             "enum": [
               "db-consistency",
-              "bug-bounty"
+              "bug-bounty",
+              "status-auto-approve"
             ],
-            "description": "When set, cron fires a check-and-fix maintenance handler instead of an LLM agent turn."
+            "description": "When set, cron fires a check-and-fix / status auto-approve maintenance handler instead of an LLM agent turn."
           },
           "timezone": {
             "type": "string",
@@ -7233,7 +7402,8 @@
             "type": "string",
             "enum": [
               "db-consistency",
-              "bug-bounty"
+              "bug-bounty",
+              "status-auto-approve"
             ]
           },
           "ok": {
@@ -7284,7 +7454,8 @@
                   "type": "string",
                   "enum": [
                     "db-consistency",
-                    "bug-bounty"
+                    "bug-bounty",
+                    "status-auto-approve"
                   ]
                 },
                 "schedule": {

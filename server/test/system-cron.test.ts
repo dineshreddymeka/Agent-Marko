@@ -13,9 +13,17 @@ describe('system cron jobs', () => {
     expect(SYSTEM_CRON_SCHEDULE).toBe('*/5 * * * *')
   })
 
-  test('catalog covers DB Consistency + Bug Bounty', () => {
-    expect(SYSTEM_CRON_JOBS.map((j) => j.kind).sort()).toEqual(['bug-bounty', 'db-consistency'])
-    expect(SYSTEM_CRON_JOBS.map((j) => j.name).sort()).toEqual(['Bug Bounty', 'DB Consistency'])
+  test('catalog covers DB Consistency + Bug Bounty + Status Auto-Approve', () => {
+    expect(SYSTEM_CRON_JOBS.map((j) => j.kind).sort()).toEqual([
+      'bug-bounty',
+      'db-consistency',
+      'status-auto-approve',
+    ])
+    expect(SYSTEM_CRON_JOBS.map((j) => j.name).sort()).toEqual([
+      'Bug Bounty',
+      'DB Consistency',
+      'Status Auto-Approve',
+    ])
   })
 
   test('isSystemCronJob matches workflow.systemKind or catalog name', () => {
@@ -26,6 +34,9 @@ describe('system cron jobs', () => {
       }),
     ).toBe('db-consistency')
     expect(isSystemCronJob({ name: 'Bug Bounty', workflow: {} })).toBe('bug-bounty')
+    expect(isSystemCronJob({ name: 'Status Auto-Approve', workflow: {} })).toBe(
+      'status-auto-approve',
+    )
     expect(isSystemCronJob({ name: 'Other', workflow: {} })).toBeNull()
   })
 })

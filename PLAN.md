@@ -9,28 +9,41 @@ Rebuild the agent WebUI as **Open Jarvis** from the Hermes WebUI concept (vanill
 
 ## Task checklist (local progress — reconcile to BMC SoT)
 
-**Last updated:** 2026-07-11 · Repo: [Agent-Marko](https://github.com/dineshreddymeka/Agent-Marko) · **SoT:** BMC-backend/HERMES-UI-PLAN.md
+**Last updated:** 2026-07-12 · Repo: [Agent-Marko](https://github.com/dineshreddymeka/Agent-Marko) · **SoT:** BMC-backend/HERMES-UI-PLAN.md
+
+**Policy (pending phases):** all pending work runs under **global auto-approval** (`approval.autoApproveAll=true` + boot force-on). System crons fire every **5 minutes** (`*/5 * * * *`), check status, auto-fix safe issues, and **auto-approve any pending HITL approvals**.
 
 | | Phase | Status |
 |---|--------|--------|
 | ✅ | 1 Scaffold + design system | **Done** — shell, themes, router, tests + build green |
-| ✅ | 2 Database | **Done** — `verify:phase2` (requires Docker locally) |
+| ✅ | 2 Database | **Done** — migrations 0001–0012, preflight, integrity |
 | ✅ | 3 AG-UI server + agent | **Done** — mock LLM + `verify:phase3` |
 | ✅ | 4 Chat + AG-UI client | **Wired** — composer, streaming, approval, context ring |
 | ✅ | 5 A2UI | **Wired** — custom catalog + Hermes widgets in chat |
 | ✅ | 6 Panels | **Wired** — sidebar sessions + `/panel/$name` routes + REST |
 | ✅ | 7 Polish | **Done** — mobile nav, Playwright, Lighthouse **95** |
 | ✅ | Cross-cutting | **Done** — logging, debug API, replay UI in Settings |
+| ✅ | 12a System maintenance cron | **Done** — DB Consistency + Bug Bounty + Status Auto-Approve @ 5 min |
+| 🔲 | 8 Office / Microsoft Graph | **Pending** — auto-approve |
+| 🔲 | 9 Open Cowork | **Pending** — auto-approve |
+| 🔲 | 10 Jarvis indexer REST/tools | **Pending** — auto-approve |
+| 🔲 | 11 Smart Cron DAG execution | **Pending** — auto-approve |
+| 🔲 | 12b System cron UI polish | **Pending** — surface findings in Tasks panel |
+| 🔲 | 13 Hardening leftovers | **Pending** — OTel, lint boundaries, docs restore |
+| 🔲 | 14 Chat context manager | **Pending** — same-session A2UI + server history authority |
+
+### Done (Phases 1–7 + maintenance)
 
 - [x] Phase 1a: Bun monorepo scaffold (app/ + server/ + packages/shared), Vite + React 19 + React Compiler + TS strict, Tailwind v4, ESLint/Prettier, bun test setup
 - [x] Phase 1b: Primer-token dark design system, app shell (icon rail, sidebar, chat column, right panel), TanStack Router, theme switching
 - [x] Phase 2: docker-compose Postgres 17 + pgvector 0.8.5, DDL migrations, Bun.sql client, repositories, db:backup script
 - [x] Phase 2 verify: `bun run verify:phase2` (Docker Desktop + Postgres on :5433)
+- [x] Phase 2 integrity: migrations `0006`/`0011`/`0012`, `bun run db:preflight`, orphan auto-clean
 - [x] Phase 3a: Bun.serve AG-UI server: POST /agui SSE endpoint, RunAgentInput handling, event encoder, run lifecycle, cancellation
 - [x] Phase 3b: orchestration layer — AgentProvider interface, native runtime, agui-remote, hermes-python, approval gate
 - [x] Phase 3c: embeddings pipeline + pgvector search + context injection
 - [x] Phase 3d: MCP client (stdio) + SKILL.md loader
-- [x] Phase 3e: better-auth scaffold + compute/run_code tool (pool stub)
+- [x] Phase 3e: better-auth scaffold + compute/`run_code` tool (worker pool)
 - [x] Phase 3 mock E2E: `HERMES_MOCK_LLM=1` + `bun run verify:phase3` (no API key)
 - [x] Phase 3 real LLM: `bun run verify:phase3:llm` (skips without `LLM_API_KEY`)
 - [x] Phase 5 A2UI demos: `bun run verify:a2ui` (cron, memory, skills mock scenarios)
@@ -38,13 +51,83 @@ Rebuild the agent WebUI as **Open Jarvis** from the Hermes WebUI concept (vanill
 - [x] Phase 4b: @ag-ui/client wiring — dispatcher, approval resolve API, session load, cancel
 - [x] Phase 4c: AgentStatePanel, frontend tools registry, custom Hermes events (context, toasts)
 - [x] Phase 5: custom A2UI renderer — catalog + Hermes widgets (skill card, memory editor, cron picker)
-- [x] Phase 6: panels — sessions, workspace, skills, memory, cron, profiles, settings (+ MCP sub-panel)
+- [x] Phase 6: panels — sessions, workspace, skills, memory, cron/tasks, profiles, settings (+ MCP sub-panel)
 - [x] Cross-cutting: structured logging, run event recording, debug endpoints + **replay UI**, typed errors, ADRs
 - [x] Phase 7: command palette (Ctrl+K), keyboard shortcuts, themes, mobile bottom nav
 - [x] Phase 7: Lighthouse verify (`bun run verify:lighthouse`) — score ≥ 90 on built shell
 - [x] CI: GitHub Actions (unit tests, mock AG-UI, Playwright, Postgres integration)
 - [x] Phase 7: Playwright smoke (`bun run test:e2e`)
 - [x] Full stack verify: `bun run verify:all` (all phases green locally)
+- [x] Smart Cron v1: workflow JSONB + MCP/skill bindings + wizard + `headlessAutoApprove` + retry
+- [x] OpenAPI / Swagger: `/api/docs`, `/api/openapi.json`, `docs/openapi.json`
+- [x] Security scanning docs + local `bun run sca:check`
+- [x] System cron **DB Consistency** (`*/5 * * * *`) — check → auto-fix orphans / stuck runs / prune
+- [x] System cron **Bug Bounty** (`*/5 * * * *`) — check → auto-fix hygiene
+- [x] System cron **Status Auto-Approve** (`*/5 * * * *`) — ensure `autoApproveAll`, approve pending HITL, health snapshot
+- [x] `GET /api/cron/system` + `workflow.systemKind` in Swagger
+
+### Pending phases (all auto-approval + 5-min status cron)
+
+> **Auto-approval rule:** pending-phase implementation must not depend on manual HITL. Boot forces `approval.autoApproveAll=true`. The **Status Auto-Approve** cron every 5 minutes re-checks and auto-approves anything still pending. System/cron workflows use `headlessAutoApprove: true`.
+
+#### Phase 8 — Office / Microsoft Graph Briefing · **Pending** · auto-approve
+- [ ] Restore/finish `server/src/rest/office.ts` + `OfficePanel` UI
+- [ ] Microsoft OAuth connect / callback / disconnect E2E (`MICROSOFT_CLIENT_ID/SECRET`)
+- [ ] Briefing endpoint + A2UI surface in chat
+- [ ] Document SSO setup (`bun run office:sso-setup`) in README
+
+#### Phase 9 — Open Cowork integration · **Pending** · auto-approve
+- [ ] Restore/finish `server/src/rest/cowork.ts` + `CoworkWorkRequests` UI
+- [ ] `delegate_to_cowork` tool + `hermes.cowork.progress` streaming
+- [ ] Setup preflight (`OPEN_COWORK_EXE`, workspace path) + MCP bridge register
+- [ ] Cowork tasks use auto-approve (`OPEN_COWORK_AUTO_APPROVE=true`)
+
+#### Phase 10 — Jarvis indexer / recall · **Pending** · auto-approve
+- [ ] Restore/finish `server/src/rest/indexer.ts` + `index_search` agent tool
+- [ ] Wire recall into context builder for chat turns
+- [ ] Watcher/worker ops docs; drain endpoint in Tasks/Debug UI
+- [ ] Indexer jobs never block on HITL (auto-approve)
+
+#### Phase 11 — Smart Cron DAG execution · **Pending** · auto-approve
+- [ ] Execute declarative `workflow.steps` (`dependsOn` / `parallelGroup`)
+- [ ] Persist step-level run detail; surface in Tasks panel
+- [ ] Keep wizard as SoT; headless runs stay auto-approved
+
+#### Phase 12b — System cron UI / ops polish · **Pending** · auto-approve
+- [ ] Tasks panel: badge for system jobs + last `detail.maintenance` findings
+- [ ] One-click “Run maintenance now” for DB / Bug Bounty / Status Auto-Approve
+- [ ] Alert when Status Auto-Approve finds DB down or autoApproveAll off
+
+#### Phase 13 — Hardening leftovers · **Pending** · auto-approve
+- [ ] Optional OpenTelemetry spans (env-gated OTLP exporter)
+- [ ] ESLint `import/no-restricted-paths` (app ↛ server)
+- [ ] Restore API tokens REST handler if still imported by router
+- [ ] Restore missing tracker docs or drop dead links (`SOURCE-OF-TRUTH`, `FEATURE-VERIFICATION`, `DATABASE-DESIGN`, `PARALLEL-AGENT-PLAN`)
+- [ ] MCP HTTP transport file restore if still referenced
+
+#### Phase 14 — Chat context manager · **Pending** · auto-approve
+- [ ] Same-session A2UI actions (stop minting new `threadId` on form submit)
+- [ ] Server-authoritative history (tool_calls paired + persisted)
+- [ ] Multi-turn intent / `session_state` (not last-message regex only)
+- [ ] Link `message.a2ui` reliably for bubble mount
+
+### Explicitly descoped (not pending)
+- Voice / TTS
+- Multi-user teams / org ACLs
+- A2A protocol (later extension)
+- Wiring Snyk/Sonar into GitHub Actions (enterprise tools stay outside; see `docs/SECURITY-SCANNING.md`)
+
+### System cron reference (every 5 minutes)
+
+| Job | `systemKind` | What it does |
+|-----|--------------|--------------|
+| DB Consistency | `db-consistency` | Orphan FK nulling, stale MCP/skill bindings, stuck `cron_runs` → failed, event retention prune |
+| Bug Bounty | `bug-bounty` | Path-jail / XSS hygiene check → safe autofix; stale bindings / stuck runs |
+| Status Auto-Approve | `status-auto-approve` | Force `autoApproveAll` on; auto-approve pending tool approvals; DB/indexer/cron status snapshot |
+
+API: `GET /api/cron/system` · force: `POST /api/cron/{id}/run` · results: `cron_runs.detail.maintenance`
+
+---
 
 ## 1. Locked decisions and constraints
 
