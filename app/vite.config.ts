@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import react, { reactCompilerPreset } from '@vitejs/plugin-react'
+import babel from '@rolldown/plugin-babel'
 import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
 import path from 'node:path'
 
@@ -9,10 +10,9 @@ export default defineConfig({
       routesDirectory: './src/routes',
       generatedRouteTree: './src/routeTree.gen.ts',
     }),
-    react({
-      babel: {
-        plugins: [['babel-plugin-react-compiler', { target: '19' }]],
-      },
+    react(),
+    babel({
+      presets: [reactCompilerPreset({ target: '19' })],
     }),
   ],
   resolve: {

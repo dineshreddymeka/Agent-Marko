@@ -18,14 +18,28 @@ export default tseslint.config(
       'react-refresh': reactRefresh,
     },
     rules: {
-      ...reactHooks.configs.recommended.rules,
-      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+      // eslint 10 recommended; existing code has intentional reassignment patterns.
+      'no-useless-assignment': 'off',
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
     },
   },
   {
-    // SoT maintainability: rest/ must not import agent/ internals
+    // React hooks / refresh only apply to the app UI surface.
+    files: ['app/**/*.{ts,tsx}'],
+    rules: {
+      // Keep the classic react-hooks surface. Plugin v7's "recommended" enables
+      // React Compiler rules (set-state-in-effect, refs, purity, …) as errors and
+      // would fail lint across the existing app; adopt those separately.
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+    },
+  },
+  {
+    // Approval REST is the intentional bridge to agent approval policy.
+    // SoT maintainability: rest/ must not import agent/ internals otherwise.
     files: ['server/src/rest/**/*.{ts,tsx}'],
+    ignores: ['server/src/rest/approval.ts'],
     rules: {
       'no-restricted-imports': [
         'error',

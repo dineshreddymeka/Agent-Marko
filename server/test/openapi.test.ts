@@ -38,6 +38,7 @@ export const ENDPOINT_INVENTORY: Array<{ method: string; path: string }> = [
   // Cron
   { method: 'get', path: '/api/cron' },
   { method: 'post', path: '/api/cron' },
+  { method: 'get', path: '/api/cron/system' },
   { method: 'post', path: '/api/cron/validate' },
   { method: 'post', path: '/api/cron/wizard/preview' },
   { method: 'patch', path: '/api/cron/{id}' },

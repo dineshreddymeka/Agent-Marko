@@ -152,22 +152,56 @@ export const schemas: Record<string, JsonSchema> = {
     },
     required: ['id', 'kind', 'content', 'importance', 'createdAt'],
   },
+  CronWorkflow: {
+    type: 'object',
+    description:
+      'Enterprise workflow config persisted in `cron_jobs.workflow`. `systemKind` selects a deterministic maintenance runner.',
+    properties: {
+      version: { type: 'integer', enum: [1] },
+      intent: { type: 'string' },
+      systemKind: {
+        type: 'string',
+        enum: ['db-consistency', 'bug-bounty', 'status-auto-approve'],
+        description:
+          'When set, cron fires a check-and-fix / status auto-approve maintenance handler instead of an LLM agent turn.',
+      },
+      timezone: { type: 'string', default: 'UTC' },
+      mcpServerIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
+      skillIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
+      profileId: { type: ['string', 'null'], format: 'uuid' },
+      headlessAutoApprove: { type: 'boolean', default: false },
+      retry: {
+        type: 'object',
+        properties: {
+          maxAttempts: { type: 'integer', minimum: 1, maximum: 10 },
+          backoffSec: { type: 'integer', minimum: 0, maximum: 3600 },
+        },
+      },
+      steps: { type: 'array', items: { type: 'object', additionalProperties: true } },
+      ui: { type: 'object', additionalProperties: true },
+    },
+    required: ['version'],
+  },
   CronJob: {
     'x-db-table': 'cron_jobs',
     type: 'object',
     properties: {
       id: { type: 'string', format: 'uuid' },
       name: { type: 'string' },
-      schedule: { type: 'string' },
+      schedule: {
+        type: 'string',
+        description: 'Cron expression. Built-in system jobs use `*/2 * * * *`.',
+        example: '*/2 * * * *',
+      },
       prompt: { type: 'string' },
       profileId: { type: ['string', 'null'] },
       enabled: { type: 'boolean' },
       lastRun: { type: ['string', 'null'], format: 'date-time' },
       nextRun: { type: ['string', 'null'], format: 'date-time' },
       timezone: { type: 'string' },
-      workflow: { type: 'object', additionalProperties: true },
-      mcpServerIds: { type: 'array', items: { type: 'string' } },
-      skillIds: { type: 'array', items: { type: 'string' } },
+      workflow: { $ref: '#/components/schemas/CronWorkflow' },
+      mcpServerIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
+      skillIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
       updatedAt: { type: ['string', 'null'], format: 'date-time' },
     },
     required: ['id', 'name', 'schedule', 'prompt', 'enabled', 'timezone'],
@@ -180,12 +214,54 @@ export const schemas: Record<string, JsonSchema> = {
       jobId: { type: 'string', format: 'uuid' },
       startedAt: { type: 'string', format: 'date-time' },
       finishedAt: { type: ['string', 'null'], format: 'date-time' },
-      status: { type: 'string' },
+      status: { type: 'string', enum: ['running', 'completed', 'failed'] },
       sessionId: { type: ['string', 'null'] },
       error: { type: ['string', 'null'] },
-      detail: { type: ['object', 'null'], additionalProperties: true },
+      detail: {
+        type: ['object', 'null'],
+        additionalProperties: true,
+        description:
+          'Per-run snapshot. System jobs include `detail.maintenance` with `{ kind, ok, checked, fixed, findings }`.',
+      },
     },
     required: ['id', 'jobId', 'startedAt', 'status'],
+  },
+  CronMaintenanceResult: {
+    type: 'object',
+    properties: {
+      kind: { type: 'string', enum: ['db-consistency', 'bug-bounty', 'status-auto-approve'] },
+      ok: { type: 'boolean' },
+      checked: { type: 'integer' },
+      fixed: { type: 'integer' },
+      findings: { type: 'array', items: { type: 'string' } },
+      detail: { type: 'object', additionalProperties: true },
+    },
+    required: ['kind', 'ok', 'checked', 'fixed', 'findings'],
+  },
+  CronSystemJobsResponse: {
+    type: 'object',
+    properties: {
+      schedule: {
+        type: 'string',
+        description: 'Default schedule for built-in maintenance jobs',
+        example: '*/2 * * * *',
+      },
+      catalog: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            kind: { type: 'string', enum: ['db-consistency', 'bug-bounty', 'status-auto-approve'] },
+            schedule: { type: 'string' },
+            prompt: { type: 'string' },
+          },
+          required: ['name', 'kind', 'schedule', 'prompt'],
+        },
+      },
+      jobs: { type: 'array', items: { $ref: '#/components/schemas/CronJob' } },
+    },
+    required: ['schedule', 'catalog', 'jobs'],
   },
   CronValidateResponse: {
     type: 'object',
