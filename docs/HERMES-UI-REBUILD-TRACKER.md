@@ -44,6 +44,7 @@ This file is **auto-updated** by the Cursor project hook (`.cursor/hooks/plan-tr
 | Skills UI + sync/retrieval ramp | Shipped | Enterprise SkillsPanel; register → disk+DB+embed; boot/panel sync; content_hash skip; recreate-on-disk |
 | Office / Cowork exe path | Fixed | Dead default `%LOCALAPPDATA%\Programs\open-cowork\Open Cowork.exe` caused ENOENT when app uninstalled. Now: empty config default + runtime resolve (`OPEN_COWORK_EXE` / `OPEN_COWORK_PATH` / `COWORK_EXE`); exists-check before spawn; `GET /api/cowork/setup`; POST create → 503 `COWORK_EXE_MISSING`; Office + Cowork Setup CTA. No binary on machine — `BMC/center/open-cowork` is docs-only. |
 | Microsoft Graph SSO (Office Briefing) | Fixed (config gap) | SSO already implemented (Web + PKCE → login.microsoftonline.com) but `.env` had empty `MICROSOFT_CLIENT_ID`/`SECRET` so redirect never fired — Chrome work login alone is not enough. Now: public `GET /api/office/config` + `missingEnv`; Sign in with Microsoft on `/login` + Office Briefing (same-tab `/api/office/sso`); UI separates (A) Graph SSO vs (B) Open Cowork.exe; `.env.example` + tracker docs. Retry: set env → `bun run office:sso-setup` or paste secrets → restart → Office → Briefing. |
+| Cowork Slice B — Jarvis MCP bridge | Landed | stdio MCP server (`cowork:mcp-bridge`) with `jarvis_report_progress` / `jarvis_ask` / `jarvis_fetch_context`; `POST /api/cowork/mcp-bridge/register` + `setup.mcpBridge`; task detail `progress`/`questions`; no Slice A `client.ts`/`runTaskInner` changes |
 
 ---
 

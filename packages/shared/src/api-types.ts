@@ -284,11 +284,29 @@ export interface CoworkTaskListResponse {
   tasks: CoworkTask[]
 }
 
+/** Mid-task progress reported by the worker via the Jarvis MCP bridge. */
+export interface CoworkTaskProgressEntry {
+  at: string
+  message: string
+  percent?: number
+}
+
+/** Clarifying question stored by the worker via the Jarvis MCP bridge (`jarvis_ask`). */
+export interface CoworkTaskQuestion {
+  id: string
+  question: string
+  at: string
+}
+
 export interface CoworkTaskDetail extends CoworkTask {
   /** Parsed outbox/<taskId>/status.json when present. */
   statusJson: Record<string, unknown> | null
   /** Filenames under outbox/<taskId>/ (excluding status.json when listed separately). */
   outboxFiles: string[]
+  /** Bridge progress reports (in-memory + persisted COWORK_PROGRESS events). */
+  progress?: CoworkTaskProgressEntry[]
+  /** Bridge clarifying questions (in-memory + persisted COWORK_QUESTION events). */
+  questions?: CoworkTaskQuestion[]
 }
 
 export interface AbortCoworkTaskResponse {
@@ -313,6 +331,22 @@ export interface CoworkSetupResponse {
   downloadUrl: string
   /** Present when the executable is missing or lacks headless. */
   code?: 'COWORK_EXE_MISSING' | 'COWORK_HEADLESS_UNSUPPORTED'
+  /** Jarvis MCP bridge registration status (Slice B). */
+  mcpBridge?: CoworkMcpBridgeStatus
+}
+
+/** Status of the Jarvis stdio MCP bridge entry in Open Cowork's mcp-config.json. */
+export interface CoworkMcpBridgeStatus {
+  registered: boolean
+  command: string
+  configPath: string
+  hint: string
+}
+
+/** POST /api/cowork/mcp-bridge/register response. */
+export interface RegisterCoworkMcpBridgeResponse {
+  ok: boolean
+  mcpBridge: CoworkMcpBridgeStatus
 }
 
 /** PUT /api/cowork/setup — persist exe/workspace overrides (settings > env). */

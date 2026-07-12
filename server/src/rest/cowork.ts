@@ -20,9 +20,16 @@ import {
   getCoworkSetupInfo,
 } from '../cowork/client'
 import { coworkSessionTitle, restoreCoworkTaskFromEvents } from '../cowork/persist'
+import { bridgeEntriesFromEvents } from '../cowork/mcp-bridge'
+import {
+  getJarvisMcpBridgeStatus,
+  registerJarvisMcpBridge,
+} from '../cowork/mcp-register'
 import {
   abortCoworkTask,
   getCoworkTaskRecord,
+  listCoworkTaskProgress,
+  listCoworkTaskQuestions,
   listCoworkTaskRecords,
   listOutboxFiles,
   readStatusJson,
@@ -167,7 +174,30 @@ export async function handleCowork(req: Request, path: string): Promise<Response
   // GET /api/cowork/setup — exe/workspace readiness (never throws ENOENT to the client).
   if (req.method === 'GET' && parts.length === 3 && parts[2] === 'setup') {
     const overrides = await loadCoworkPathOverrides()
-    return jsonResponse(setupPayload(getCoworkSetupInfo(overrides)))
+    const mcpBridge = await getJarvisMcpBridgeStatus()
+    return jsonResponse({
+      ...setupPayload(getCoworkSetupInfo(overrides)),
+      mcpBridge,
+    })
+  }
+
+  // POST /api/cowork/mcp-bridge/register — upsert the Jarvis MCP server entry
+  // into Open Cowork's mcp-config.json (register with Cowork closed, then start it).
+  if (
+    req.method === 'POST' &&
+    parts.length === 4 &&
+    parts[2] === 'mcp-bridge' &&
+    parts[3] === 'register'
+  ) {
+    try {
+      const mcpBridge = await registerJarvisMcpBridge()
+      return jsonResponse({ ok: true, mcpBridge })
+    } catch (err) {
+      return jsonResponse(
+        { error: err instanceof Error ? err.message : String(err) },
+        500,
+      )
+    }
   }
 
   // PUT /api/cowork/setup — persist exe/workspace (settings > env; no API restart).
@@ -312,23 +342,37 @@ export async function handleCowork(req: Request, path: string): Promise<Response
       return jsonResponse({ error: 'Task not found', taskId }, 404)
     }
 
+    const events = sessionId
+      ? await withDatabase(() => runEventsRepo.listBySession(sessionId!), [])
+      : []
+
     let restored: CoworkTask | null = null
-    if (!live && sessionId) {
-      const events = await withDatabase(
-        () => runEventsRepo.listBySession(sessionId!),
-        [],
-      )
-      if (events.length > 0) {
-        restored = restoreCoworkTaskFromEvents(taskId, sessionId, events, {
-          statusJson: statusJson as {
-            ok?: boolean
-            files?: string[]
-            summary?: string
-            error?: string
-          } | null,
-        })
-      }
+    if (!live && events.length > 0) {
+      restored = restoreCoworkTaskFromEvents(taskId, sessionId!, events, {
+        statusJson: statusJson as {
+          ok?: boolean
+          files?: string[]
+          summary?: string
+          error?: string
+        } | null,
+      })
     }
+
+    // Bridge progress/questions: persisted COWORK_PROGRESS/COWORK_QUESTION
+    // events (cross-process) merged with this process's in-memory entries.
+    const bridge = bridgeEntriesFromEvents(events)
+    const progress = [...bridge.progress]
+    const seenProgress = new Set(progress.map((p) => `${p.at}|${p.message}`))
+    for (const p of listCoworkTaskProgress(taskId)) {
+      if (!seenProgress.has(`${p.at}|${p.message}`)) progress.push(p)
+    }
+    progress.sort((a, b) => a.at.localeCompare(b.at))
+    const questions = [...bridge.questions]
+    const seenQuestions = new Set(questions.map((q) => q.id))
+    for (const q of listCoworkTaskQuestions(taskId)) {
+      if (!seenQuestions.has(q.id)) questions.push(q)
+    }
+    questions.sort((a, b) => a.at.localeCompare(b.at))
 
     const files =
       live?.files?.length
@@ -365,6 +409,8 @@ export async function handleCowork(req: Request, path: string): Promise<Response
       finishedAt: live?.finishedAt ?? restored?.finishedAt ?? null,
       statusJson,
       outboxFiles,
+      ...(progress.length > 0 ? { progress } : {}),
+      ...(questions.length > 0 ? { questions } : {}),
     }
     return jsonResponse(detail)
   }

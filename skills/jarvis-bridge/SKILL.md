@@ -40,6 +40,22 @@ As your final action, write `outbox/<taskId>/status.json`:
   Still list any partial `files` you produced.
 - Jarvis treats a missing or malformed status.json as task failure.
 
+## Progress + questions (MCP Jarvis tools)
+
+When an MCP server named "Jarvis" is available, use its tools:
+
+- On long tasks, call `jarvis_report_progress` with the taskId and a short
+  message at meaningful milestones (optionally `percent` 0-100) so the
+  orchestrator UI can show live progress.
+- If something is ambiguous, call `jarvis_ask` with the taskId and your
+  question, then continue with your best assumption — the ack is immediate
+  and no answer will arrive during the task. State the assumption in the
+  deliverable.
+- `jarvis_fetch_context` fetches short Jarvis settings/memory snippets
+  (read-only) when the brief references stored context.
+
+If the Jarvis MCP server is not configured, skip these calls silently.
+
 ## Style
 
 - Prefer built-in document skills (pptx, docx, xlsx, pdf) for Office outputs.

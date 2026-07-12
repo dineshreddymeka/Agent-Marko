@@ -95,6 +95,12 @@ describe('handleCowork REST', () => {
       code?: string
       downloadUrl?: string
       releasesUrl?: string
+      mcpBridge?: {
+        registered: boolean
+        command: string
+        configPath: string
+        hint: string
+      }
     }
     expect(typeof body.exe).toBe('string')
     expect(typeof body.exeExists).toBe('boolean')
@@ -102,6 +108,12 @@ describe('handleCowork REST', () => {
     expect(typeof body.hint).toBe('string')
     expect(typeof body.downloadUrl).toBe('string')
     expect(typeof body.releasesUrl).toBe('string')
+    expect(body.mcpBridge).toBeTruthy()
+    expect(typeof body.mcpBridge!.registered).toBe('boolean')
+    expect(typeof body.mcpBridge!.command).toBe('string')
+    expect(body.mcpBridge!.command).toContain('mcp-bridge-main.ts')
+    expect(typeof body.mcpBridge!.configPath).toBe('string')
+    expect(typeof body.mcpBridge!.hint).toBe('string')
     if (!body.exeExists) {
       expect(body.configured).toBe(false)
       expect(body.code).toBe('COWORK_EXE_MISSING')
