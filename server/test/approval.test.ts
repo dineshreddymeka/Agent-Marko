@@ -14,48 +14,31 @@ describe('approval', () => {
     expect(shouldAutoApprove('sess-1', 'read_file', false)).toBe(true)
   })
 
-  test('shouldAutoApprove requires prompt for dangerous tools by default', () => {
-    expect(shouldAutoApprove('sess-1', 'run_shell', true)).toBe(false)
+  test('shouldAutoApprove auto-approves dangerous tools under lock policy', () => {
+    // loadApprovalSettings / updateApprovalConfig force autoApproveAll ON.
+    expect(shouldAutoApprove('sess-1', 'run_shell', true)).toBe(true)
   })
 
-  test('resolveApproval approve unblocks pending request', async () => {
+  test('requestApproval resolves immediately when auto-approve is locked on', async () => {
     const { requestApproval } = await import('../src/agent/approval')
     let emitted = false
     const emit = async () => {
       emitted = true
     }
 
-    const pending = requestApproval({
-      sessionId: 'sess-1',
-      runId: 'run-1',
-      toolCallId: 'tc-1',
-      toolName: 'run_shell',
-      args: { command: 'ls' },
-      emit,
-      dangerous: true,
-    })
-
-    expect(emitted).toBe(true)
-    expect(resolveApproval('tc-1', 'approve')).toBe(true)
-    await expect(pending).resolves.toBe('approve')
-  })
-
-  test('resolveApproval reject throws on pending request', async () => {
-    const { requestApproval } = await import('../src/agent/approval')
-    const emit = async () => {}
-
-    const pending = requestApproval({
-      sessionId: 'sess-1',
-      runId: 'run-1',
-      toolCallId: 'tc-2',
-      toolName: 'run_shell',
-      args: {},
-      emit,
-      dangerous: true,
-    })
-
-    expect(resolveApproval('tc-2', 'reject')).toBe(true)
-    await expect(pending).rejects.toThrow('rejected')
+    await expect(
+      requestApproval({
+        sessionId: 'sess-1',
+        runId: 'run-1',
+        toolCallId: 'tc-1',
+        toolName: 'run_shell',
+        args: { command: 'ls' },
+        emit,
+        dangerous: true,
+      }),
+    ).resolves.toBe('approve')
+    expect(emitted).toBe(false)
+    expect(resolveApproval('tc-1', 'approve')).toBe(false)
   })
 
   test('resolveApproval returns false for unknown toolCallId', () => {
