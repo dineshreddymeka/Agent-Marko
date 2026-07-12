@@ -32,7 +32,29 @@ bun run dev
 | `bun run verify:all` | All verifiers (skips Phase 2 if Docker daemon unavailable) |
 | `bun run test:e2e` | Playwright smoke tests (starts dev server) |
 
-CI runs on push/PR via `.github/workflows/ci.yml` (unit + mock AG-UI + Playwright + Postgres + Snyk + SonarCloud).
+CI runs on push/PR via `.github/workflows/ci.yml` plus dedicated free security workflows.
+
+### Free security scanning (GitHub + OSS)
+
+| Scanner | Workflow / config | Secret needed? |
+|---------|-------------------|----------------|
+| **Dependabot** updates | [`.github/dependabot.yml`](./.github/dependabot.yml) | No (enable Dependabot alerts in repo Settings → Code security) |
+| **CodeQL** | [`.github/workflows/codeql.yml`](./.github/workflows/codeql.yml) | No (public repos) |
+| **Dependency Review** | [`.github/workflows/dependency-review.yml`](./.github/workflows/dependency-review.yml) | No (PRs; free on public repos) |
+| **Gitleaks** (secrets) | [`.github/workflows/security-scans.yml`](./.github/workflows/security-scans.yml) | No |
+| **Trivy** (FS vulns) | same | No |
+| **OSV Scanner** | same | No |
+| **OpenSSF Scorecard** | same | No |
+| **Semgrep** (SAST) | same | No |
+| **Bun audit** | same | No |
+| **Snyk** | [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) | `SNYK_TOKEN` (optional) |
+| **SonarCloud** | same | `SONAR_TOKEN` (optional) |
+
+Also turn on (repo **Settings → Code security and analysis**, free for public repos):
+
+- Dependabot alerts + security updates
+- Secret scanning (+ push protection if available)
+- Code scanning (CodeQL workflow above uploads results)
 
 ### Free Snyk (optional)
 
