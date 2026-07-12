@@ -76,3 +76,49 @@ jobs:
           DATABASE_URL: postgres://hermes:hermes@localhost:5433/hermes
           HERMES_INTEGRATION_TEST: "1"
         run: bun test server/test/db.integration.test.ts
+
+  # Free Snyk Open Source + Code scans (https://snyk.io — Free plan).
+  # Add repo secret SNYK_TOKEN (Account Settings → General → API Token).
+  # Job skips cleanly until the secret is configured.
+  snyk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: snyk/actions/setup@master
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Snyk Open Source (dependencies)
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          if [ -z "$SNYK_TOKEN" ]; then
+            echo "::notice::SNYK_TOKEN not set — skipping. Create a free Snyk account at https://app.snyk.io and add the API token as repo secret SNYK_TOKEN."
+            exit 0
+          fi
+          snyk test --all-projects --severity-threshold=high
+
+      - name: Snyk Code (SAST)
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          if [ -z "$SNYK_TOKEN" ]; then
+            exit 0
+          fi
+          snyk code test --severity-threshold=high
+
+      - name: Snyk monitor (main only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          if [ -z "$SNYK_TOKEN" ]; then
+            exit 0
+          fi
+          snyk monitor --all-projects

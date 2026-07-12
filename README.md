@@ -32,7 +32,18 @@ bun run dev
 | `bun run verify:all` | All verifiers (skips Phase 2 if Docker daemon unavailable) |
 | `bun run test:e2e` | Playwright smoke tests (starts dev server) |
 
-CI runs on push/PR via `.github/workflows/ci.yml` (unit + mock AG-UI + Playwright + Postgres job).
+CI runs on push/PR via `.github/workflows/ci.yml` (unit + mock AG-UI + Playwright + Postgres + Snyk).
+
+### Free Snyk (optional)
+
+CI includes a free-tier [Snyk](https://snyk.io) job for dependency and code scanning. To enable it:
+
+1. Sign up at https://app.snyk.io (Free plan).
+2. Copy your API token from **Account Settings → General**.
+3. In GitHub: **Settings → Secrets and variables → Actions → New repository secret**
+4. Name: `SNYK_TOKEN`, value: your token.
+
+Until the secret is set, the Snyk job skips cleanly. With the token present, scans fail the job on **high** (or worse) severity findings. Pushes to `main` also run `snyk monitor` so the project stays visible in the Snyk dashboard.
 
 Settings → **Debug** tab: replay recorded AG-UI runs through the UI dispatcher.
 
