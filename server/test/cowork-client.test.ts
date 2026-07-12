@@ -482,6 +482,35 @@ describe('CoworkClient', () => {
     await client.stop(50)
   })
 
+  test('sendMessage emits session.message JSONL', async () => {
+    const client = new CoworkClient({
+      exe: 'fake.exe',
+      workspace,
+      spawnFn: spawnFn(),
+      readyTimeoutMs: 5_000,
+    })
+    await startReady(client)
+
+    client.sendMessage('sess-msg', 'please write status.json')
+    await new Promise((r) => setTimeout(r, 10))
+    const lines = lastChild!.stdinWrites.join('').trim().split('\n')
+    expect(JSON.parse(lines.at(-1)!)).toEqual({
+      type: 'session.message',
+      sessionId: 'sess-msg',
+      text: 'please write status.json',
+    })
+    await client.stop(50)
+  })
+
+  test('sendMessage throws when not started', () => {
+    const client = new CoworkClient({
+      exe: 'fake.exe',
+      workspace,
+      spawnFn: spawnFn(),
+    })
+    expect(() => client.sendMessage('s', 'x')).toThrow(/not started/)
+  })
+
   test('handles partial JSONL chunks on stdout', async () => {
     const client = new CoworkClient({
       exe: 'fake.exe',

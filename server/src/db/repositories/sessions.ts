@@ -1,4 +1,4 @@
-import { desc, eq, and, ilike, sql } from 'drizzle-orm'
+import { desc, eq, and, ilike, lt, sql } from 'drizzle-orm'
 import type { Session } from '@hermes/shared'
 import { getDb } from '../client'
 import { sessions } from '../schema'
@@ -91,6 +91,15 @@ export const sessionsRepo = {
     const db = getDb()
     const result = await db.delete(sessions).where(eq(sessions.id, id)).returning({ id: sessions.id })
     return result.length > 0
+  },
+
+  async deleteArchivedOlderThan(cutoff: Date): Promise<number> {
+    const db = getDb()
+    const rows = await db
+      .delete(sessions)
+      .where(and(eq(sessions.archived, true), lt(sessions.updatedAt, cutoff)))
+      .returning({ id: sessions.id })
+    return rows.length
   },
 
   async search(query: string, limit = 20): Promise<Session[]> {

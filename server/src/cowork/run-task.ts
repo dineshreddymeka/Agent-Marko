@@ -20,7 +20,11 @@ import {
   resolveCoworkExe,
 } from './client'
 import { beginCoworkAudit, finishCoworkAudit } from './persist'
-import { validateStatus } from './status'
+import {
+  validateStatus,
+  type StatusValidationFail,
+  type StatusValidationResult,
+} from './status'
 import {
   generateTaskId,
   packageTask,
@@ -31,6 +35,9 @@ import type { CoworkClientOptions, CoworkTaskResult } from './types'
 import { ensureDirs } from './workspace'
 
 const log = logger.child({ component: 'cowork-run-task' })
+
+/** Bounded wait for the one-shot corrective status.json retry (§ Slice A). */
+const COWORK_STATUS_CORRECTION_TIMEOUT_MS = 90_000
 
 /** In-memory active clients for best-effort abort (process-local). */
 const activeClients = new Map<
@@ -86,6 +93,8 @@ export type RunCoworkTaskInput = {
   signal?: AbortSignal
   /** Jarvis chat session that delegated this task (stored on COWORK_STARTED meta). */
   parentSessionId?: string
+  /** Bounded wait for the one-shot corrective status.json retry (default 90s). */
+  statusCorrectionTimeoutMs?: number
 }
 
 export type RunCoworkTaskResult = {
@@ -289,6 +298,83 @@ export async function abortCoworkTask(
   }
 
   return { ok: true, status: 'aborted' }
+}
+
+/**
+ * Follow-up `session.message` into a live task (REST `/message` + chat).
+ * Fails when the task has no live client or the session id is not yet known.
+ */
+export function sendCoworkTaskMessage(
+  taskId: string,
+  text: string,
+): { ok: true } | { ok: false; code: 'not_live' | 'no_session'; error: string } {
+  const entry = activeClients.get(taskId)
+  if (!entry) {
+    return {
+      ok: false,
+      code: 'not_live',
+      error: 'No active Cowork process for this task',
+    }
+  }
+  if (!entry.coworkSessionId) {
+    return {
+      ok: false,
+      code: 'no_session',
+      error: 'Cowork session not started yet for this task',
+    }
+  }
+  try {
+    entry.client.sendMessage(entry.coworkSessionId, text)
+  } catch (err) {
+    return {
+      ok: false,
+      code: 'no_session',
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
+  return { ok: true }
+}
+
+/**
+ * True when status.json is missing or structurally invalid (vs a well-formed
+ * failure like ok:false or missing deliverables) — the corrective-retry cases.
+ */
+export function isStructuralStatusFailure(
+  validation: StatusValidationResult,
+): validation is StatusValidationFail {
+  if (validation.ok) return false
+  return validation.status == null || validation.error.includes('taskId mismatch')
+}
+
+/** One-shot corrective instruction sent when status.json is bad after session.end. */
+export function buildStatusCorrectionMessage(taskId: string, problem: string): string {
+  const statusRel = `outbox/${taskId}/status.json`
+  return [
+    `Jarvis could not accept your result: ${problem}.`,
+    `Write ${statusRel} now per the jarvis-bridge skill schema — a JSON object with`,
+    `required fields taskId ("${taskId}"), ok (boolean), and files (string[] of`,
+    `deliverables relative to outbox/${taskId}/), plus optional summary/error.`,
+    `Do not redo the task; just write the status file and finish.`,
+  ].join(' ')
+}
+
+/** Resolve when the session emits `session.end` again, or after timeoutMs. */
+function waitForCoworkSessionSettle(
+  client: CoworkClient,
+  sessionId: string,
+  timeoutMs: number,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const finish = (settled: boolean) => {
+      clearTimeout(timer)
+      unsub()
+      resolve(settled)
+    }
+    const timer = setTimeout(() => finish(false), timeoutMs)
+    const unsub = client.onEvent((evt) => {
+      if (evt.sessionId === sessionId && evt.type === 'session.end') finish(true)
+    })
+  })
 }
 
 export async function listOutboxFiles(
@@ -621,6 +707,40 @@ export async function runCoworkTask(
     throw err
   }
 
+  let validation = await validateStatus(workspace, packaged.taskId)
+
+  // Corrective retry (Slice A): when status.json is missing or structurally
+  // invalid after session.end, nudge the still-live session ONCE via
+  // session.message, wait (bounded) for it to settle, then re-validate once.
+  if (
+    isStructuralStatusFailure(validation) &&
+    taskResult.sessionId &&
+    taskRecords.get(taskId)?.status !== 'aborted'
+  ) {
+    const problem = validation.error
+    const correctionTimeoutMs =
+      input.statusCorrectionTimeoutMs ?? COWORK_STATUS_CORRECTION_TIMEOUT_MS
+    log.warn('cowork: bad status.json after session.end; sending corrective message', {
+      taskId,
+      error: problem,
+      timeoutMs: correctionTimeoutMs,
+    })
+    try {
+      client.sendMessage(
+        taskResult.sessionId,
+        buildStatusCorrectionMessage(packaged.taskId, problem),
+      )
+      await waitForCoworkSessionSettle(
+        client,
+        taskResult.sessionId,
+        correctionTimeoutMs,
+      )
+      validation = await validateStatus(workspace, packaged.taskId)
+    } catch (err) {
+      log.warn('cowork: corrective session.message failed', { taskId, error: err })
+    }
+  }
+
   input.signal?.removeEventListener('abort', onAbortSignal)
   unsub()
   activeClients.delete(taskId)
@@ -631,7 +751,6 @@ export async function runCoworkTask(
     // non-fatal
   }
 
-  const validation = await validateStatus(workspace, packaged.taskId)
   const outboxRelFiles =
     validation.status?.files?.map((f) => `outbox/${packaged.taskId}/${f}`) ?? []
   const summary =
@@ -641,7 +760,9 @@ export async function runCoworkTask(
     (taskResult.resultText ? taskResult.resultText.slice(0, 2000) : null)
   const wasAborted =
     taskRecords.get(taskId)?.status === 'aborted' || Boolean(input.signal?.aborted)
-  const ok = !wasAborted && validation.ok && taskResult.ok
+  // validateStatus re-reads status.json, which the corrective retry may have
+  // fixed after taskResult.ok was computed — validation is authoritative.
+  const ok = !wasAborted && validation.ok
   const status: CoworkTaskStatus = wasAborted
     ? 'aborted'
     : ok

@@ -280,6 +280,16 @@ export interface CreateCoworkTaskResponse {
   sessionId: string | null
 }
 
+export interface SendCoworkTaskMessageBody {
+  text: string
+}
+
+export interface SendCoworkTaskMessageResponse {
+  ok: boolean
+  taskId: string
+  error?: string
+}
+
 export interface CoworkTaskListResponse {
   tasks: CoworkTask[]
 }

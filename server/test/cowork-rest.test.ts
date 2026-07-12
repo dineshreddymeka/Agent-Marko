@@ -70,6 +70,87 @@ describe('handleCowork REST', () => {
     expect(abortBody.ok).toBe(false)
   })
 
+  test('POST message rejects empty text with 400', async () => {
+    const res = await handleCowork(
+      new Request('http://localhost/api/cowork/tasks/t-any/message', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: '   ' }),
+      }),
+      '/api/cowork/tasks/t-any/message',
+    )
+    expect(res).not.toBeNull()
+    expect(res!.status).toBe(400)
+    const body = (await res!.json()) as { error: string }
+    expect(body.error).toContain('text')
+  })
+
+  test('POST message 404 when task not live', async () => {
+    const res = await handleCowork(
+      new Request('http://localhost/api/cowork/tasks/t-not-live/message', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'hello cowork' }),
+      }),
+      '/api/cowork/tasks/t-not-live/message',
+    )
+    expect(res).not.toBeNull()
+    expect(res!.status).toBe(404)
+    const body = (await res!.json()) as { ok: boolean; error: string }
+    expect(body.ok).toBe(false)
+    expect(body.error).toContain('No active Cowork process')
+  })
+
+  test(
+    'POST message 200 into a live session',
+    async () => {
+      const { runCoworkTask, abortCoworkTask, getActiveCoworkClient } =
+        await import('../src/cowork/run-task')
+      const workspace = await mkdtemp(join(tmpdir(), 'hermes-cowork-rest-msg-'))
+      const taskId = 't-20260711-310'
+      const mock = createMockCoworkSpawn({ hangUntilAbort: true })
+
+      const runPromise = runCoworkTask({
+        goal: 'Hang for REST message',
+        taskId,
+        workspace,
+        persist: false,
+        timeoutMs: 10_000,
+        statusCorrectionTimeoutMs: 100,
+        createClient: (opts) =>
+          new CoworkClient({
+            ...opts,
+            exe: 'mock',
+            spawnFn: mock.spawnFn,
+            readyTimeoutMs: 2_000,
+          }),
+      })
+
+      const deadline = Date.now() + 2_000
+      while (!getActiveCoworkClient(taskId) && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 10))
+      }
+      await new Promise((r) => setTimeout(r, 50))
+
+      const res = await handleCowork(
+        new Request(`http://localhost/api/cowork/tasks/${taskId}/message`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ text: 'also add a summary slide' }),
+        }),
+        `/api/cowork/tasks/${taskId}/message`,
+      )
+      expect(res).not.toBeNull()
+      expect(res!.status).toBe(200)
+      const body = (await res!.json()) as { ok: boolean; taskId: string }
+      expect(body).toEqual({ ok: true, taskId })
+
+      await abortCoworkTask(taskId)
+      await runPromise
+    },
+    15_000,
+  )
+
   test('GET detail 404 for unknown task', async () => {
     const res = await handleCowork(
       new Request('http://localhost/api/cowork/tasks/t-does-not-exist'),

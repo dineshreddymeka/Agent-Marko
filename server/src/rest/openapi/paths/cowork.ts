@@ -59,6 +59,22 @@ export const coworkPaths = {
       responses: { '200': jsonContent(ref('AbortCoworkTaskResponse')), ...errorResponses() },
     },
   },
+  '/api/cowork/tasks/{taskId}/message': {
+    post: {
+      tags: ['Cowork'],
+      summary: 'Send follow-up message into a live Cowork session',
+      security: bearerOrSession,
+      parameters: [{ name: 'taskId', in: 'path', required: true, schema: { type: 'string' } }],
+      requestBody: jsonBody(ref('SendCoworkTaskMessageBody')),
+      responses: {
+        '200': jsonContent(ref('SendCoworkTaskMessageResponse')),
+        ...errorResponses({
+          '404': jsonContent(ref('SendCoworkTaskMessageResponse'), 'Task not live'),
+          '409': jsonContent(ref('SendCoworkTaskMessageResponse'), 'No Cowork session yet'),
+        }),
+      },
+    },
+  },
   '/api/cowork/mcp-bridge/register': {
     post: {
       tags: ['Cowork'],

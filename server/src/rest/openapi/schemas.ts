@@ -563,6 +563,22 @@ export const schemas: Record<string, JsonSchema> = {
     },
     required: ['ok', 'taskId', 'status'],
   },
+  SendCoworkTaskMessageBody: {
+    type: 'object',
+    properties: {
+      text: { type: 'string' },
+    },
+    required: ['text'],
+  },
+  SendCoworkTaskMessageResponse: {
+    type: 'object',
+    properties: {
+      ok: { type: 'boolean' },
+      taskId: { type: 'string' },
+      error: { type: 'string' },
+    },
+    required: ['ok', 'taskId'],
+  },
   OfficeConfigResponse: {
     type: 'object',
     properties: {

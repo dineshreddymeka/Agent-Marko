@@ -504,6 +504,11 @@ export class CoworkClient {
     this.child.stdin.write(JSON.stringify(msg) + '\n')
   }
 
+  /** Send a follow-up user message into a live session (`session.message`). */
+  sendMessage(sessionId: string, text: string): void {
+    this.send({ type: 'session.message', sessionId, text })
+  }
+
   onEvent(fn: (e: CoworkEvent) => void): () => void {
     this.listeners.add(fn)
     return () => this.listeners.delete(fn)
