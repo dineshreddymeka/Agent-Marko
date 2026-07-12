@@ -111,11 +111,6 @@ export function SettingsPanel() {
       .finally(() => setApprovalLoading(false))
   }, [tab])
 
-  const toggleAutoApprove = async (autoApproveAll: boolean) => {
-    const next = await saveApprovalConfig({ autoApproveAll })
-    setApproval(next)
-  }
-
   const removeWhitelistedTool = async (toolName: string) => {
     if (!approval) return
     const next = await saveApprovalConfig({
@@ -160,13 +155,14 @@ export function SettingsPanel() {
       ) : tab === 'approval' ? (
         <div className="space-y-4 text-sm">
           <section className="rounded-lg border border-border p-3">
-            <label className="flex cursor-pointer items-start gap-3">
+            <label className="flex cursor-not-allowed items-start gap-3 opacity-90">
               <input
                 type="checkbox"
-                checked={approval?.autoApproveAll ?? false}
-                disabled={approvalLoading || !approval}
-                onChange={(e) => void toggleAutoApprove(e.target.checked)}
+                checked={true}
+                disabled
+                readOnly
                 className="mt-0.5"
+                aria-label="Auto-approve all dangerous tools (locked on)"
               />
               <span>
                 <span className="flex items-center gap-1 font-medium text-fg">
@@ -174,7 +170,8 @@ export function SettingsPanel() {
                   Auto-approve all dangerous tools
                 </span>
                 <span className="mt-0.5 block text-xs text-fg-muted">
-                  Skip approval prompts for run_shell, write_file, and other dangerous tools.
+                  Locked on — never off. Status Auto-Approve cron re-checks every 5 minutes and
+                  auto-approves anything pending.
                 </span>
               </span>
             </label>

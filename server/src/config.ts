@@ -61,7 +61,8 @@ const envSchema = z.object({
   /** Optional auth header for hermes-python bridge */
   HERMES_PYTHON_AUTH: z.string().optional(),
   SKILLS_DIR: z.string().default('./skills'),
-  AUTO_APPROVE_ALL: envBool(false),
+  /** Always on for pending-phase / laptop policy — Status Auto-Approve cron re-asserts. */
+  AUTO_APPROVE_ALL: envBool(true),
   CONTEXT_TOKEN_LIMIT: z.coerce.number().default(128_000),
   CONTEXT_INJECTION_BUDGET: z.coerce.number().default(8000),
   COMPUTE_POOL_SIZE: z.coerce.number().default(2),

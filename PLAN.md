@@ -11,7 +11,7 @@ Rebuild the agent WebUI as **Open Jarvis** from the Hermes WebUI concept (vanill
 
 **Last updated:** 2026-07-12 · Repo: [Agent-Marko](https://github.com/dineshreddymeka/Agent-Marko) · **SoT:** BMC-backend/HERMES-UI-PLAN.md
 
-**Policy (pending phases):** all pending work runs under **global auto-approval** (`approval.autoApproveAll=true` + boot force-on). System crons fire every **5 minutes** (`*/5 * * * *`), check status, auto-fix safe issues, and **auto-approve any pending HITL approvals**.
+**Policy (pending phases):** all pending work runs under **global auto-approval** (`approval.autoApproveAll=true`, **locked — never off**). System crons fire every **5 minutes** (`*/5 * * * *`), check status, auto-fix safe issues, and **auto-approve any pending HITL approvals**. Keep the laptop awake so the API process and cron scheduler stay running.
 
 | | Phase | Status |
 |---|--------|--------|
@@ -68,7 +68,7 @@ Rebuild the agent WebUI as **Open Jarvis** from the Hermes WebUI concept (vanill
 
 ### Pending phases (all auto-approval + 5-min status cron)
 
-> **Auto-approval rule:** pending-phase implementation must not depend on manual HITL. Boot forces `approval.autoApproveAll=true`. The **Status Auto-Approve** cron every 5 minutes re-checks and auto-approves anything still pending. System/cron workflows use `headlessAutoApprove: true`.
+> **Auto-approval rule:** auto-approve is **locked on** (API/UI cannot turn it off). Boot + Status Auto-Approve cron every 5 minutes re-assert and auto-approve anything still pending. System/cron workflows use `headlessAutoApprove: true`. Keep the laptop from sleeping so cron keeps firing.
 
 #### Phase 8 — Office / Microsoft Graph Briefing · **Pending** · auto-approve
 - [ ] Restore/finish `server/src/rest/office.ts` + `OfficePanel` UI
@@ -124,6 +124,20 @@ Rebuild the agent WebUI as **Open Jarvis** from the Hermes WebUI concept (vanill
 | DB Consistency | `db-consistency` | Orphan FK nulling, stale MCP/skill bindings, stuck `cron_runs` → failed, event retention prune |
 | Bug Bounty | `bug-bounty` | Path-jail / XSS hygiene check → safe autofix; stale bindings / stuck runs |
 | Status Auto-Approve | `status-auto-approve` | Force `autoApproveAll` on; auto-approve pending tool approvals; DB/indexer/cron status snapshot |
+
+### Laptop always-on (cron stays alive)
+
+Auto-approve is **never off**. To keep 5-minute system crons firing on a Windows laptop:
+
+```powershell
+# Prevent sleep while the Open Jarvis API is running (run elevated or as user)
+powercfg /change standby-timeout-ac 0
+powercfg /change monitor-timeout-ac 0
+# Or keep awake for this session:
+powershell -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Application]::SetSuspendState('None', $false, $false)"
+```
+
+Prefer leaving the machine plugged in with sleep disabled while `bun run dev` / the API is up.
 
 API: `GET /api/cron/system` · force: `POST /api/cron/{id}/run` · results: `cron_runs.detail.maintenance`
 

@@ -674,7 +674,10 @@ export const schemas: Record<string, JsonSchema> = {
   UpdateApprovalConfigBody: {
     type: 'object',
     properties: {
-      autoApproveAll: { type: 'boolean' },
+      autoApproveAll: {
+        type: 'boolean',
+        description: 'Ignored when false — auto-approve is locked on and cannot be disabled.',
+      },
       toolWhitelist: { type: 'array', items: { type: 'string' } },
     },
   },

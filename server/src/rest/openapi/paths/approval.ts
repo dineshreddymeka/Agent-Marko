@@ -6,7 +6,7 @@ export const approvalPaths = {
       tags: ['Approval'],
       summary: 'Get tool approval config',
       description:
-        'Pending phases run with `autoApproveAll=true`. Status Auto-Approve cron re-enforces this every 5 minutes.',
+        'Auto-approve is locked ON (never off). Status Auto-Approve cron re-asserts every 5 minutes.',
       security: bearerOrSession,
       responses: { '200': jsonContent(ref('ApprovalConfig')), ...errorResponses() },
     },

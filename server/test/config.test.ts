@@ -17,6 +17,14 @@ describe('config env booleans', () => {
     process.env.AUTO_APPROVE_ALL = prev
   })
 
+  test('AUTO_APPROVE_ALL defaults true when unset', async () => {
+    const prev = process.env.AUTO_APPROVE_ALL
+    delete process.env.AUTO_APPROVE_ALL
+    const { loadConfig } = await import('../src/config')
+    expect(loadConfig().AUTO_APPROVE_ALL).toBe(true)
+    process.env.AUTO_APPROVE_ALL = prev
+  })
+
   test('INDEXER_ENABLED defaults true and accepts false', async () => {
     const prev = process.env.INDEXER_ENABLED
     delete process.env.INDEXER_ENABLED
