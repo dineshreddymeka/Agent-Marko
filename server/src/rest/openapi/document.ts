@@ -15,6 +15,7 @@ import { indexerPaths } from './paths/indexer'
 import { debugPaths } from './paths/debug'
 import { approvalPaths } from './paths/approval'
 import { healthPaths } from './paths/health'
+import { capabilitiesPaths } from './paths/capabilities'
 import { aguiPaths } from './paths/agui'
 import { authPaths } from './paths/auth'
 
@@ -38,6 +39,7 @@ export const openApiTags = [
   { name: 'Search', description: 'Hybrid + recall search' },
   { name: 'Indexer', description: 'Jarvis recall indexer' },
   { name: 'Debug', description: 'Diagnostics and run replay' },
+  { name: 'Capabilities', description: 'Capability Hub manifest, warm path, agent LLM health' },
   { name: 'Approval', description: 'Dangerous tool approval' },
   { name: 'Auth', description: 'better-auth session / social login' },
   { name: 'Health', description: 'Health and API docs' },
@@ -82,6 +84,7 @@ export function buildOpenApiDocument() {
       ...searchPaths,
       ...indexerPaths,
       ...debugPaths,
+      ...capabilitiesPaths,
       ...approvalPaths,
       ...authPaths,
       ...healthPaths,

@@ -202,3 +202,20 @@ export function getAgentLlmHealthSnapshot() {
     toolsEnabled: !degraded,
   }
 }
+
+/** Probe preferred agent endpoint (if any) and return a fresh health snapshot. */
+export async function probeAgentLlmHealth() {
+  await ensureAgentHealth()
+  return getAgentLlmHealthSnapshot()
+}
+
+/** Test-only: reset circuit breaker / probe state between cases. */
+export function resetAgentLlmHealthForTests(): void {
+  circuitState = 'closed'
+  consecutiveFailures = 0
+  openedAt = 0
+  lastFailure = null
+  lastSuccessAt = 0
+  lastHealthCheckAt = 0
+  lastHealthOk = true
+}

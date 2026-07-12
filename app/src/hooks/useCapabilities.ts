@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiClient, ApiError } from '@app/lib/api'
-import type { CapabilitiesResponse } from '@hermes/shared'
+import type { CapabilitiesRefreshResponse, CapabilitiesResponse } from '@hermes/shared'
 
 export const CAPABILITIES_QUERY_KEY = ['capabilities'] as const
 
@@ -12,6 +12,11 @@ export async function fetchCapabilities(): Promise<CapabilitiesResponse | null> 
     if (e instanceof ApiError && e.status === 404) return null
     throw e
   }
+}
+
+/** Reconnect MCP + rebuild manifest + probe agent LLM (staging/ops warm path). */
+export async function warmCapabilities(): Promise<CapabilitiesRefreshResponse> {
+  return await apiClient.post<CapabilitiesRefreshResponse>('/api/capabilities/warm')
 }
 
 export function useCapabilities() {
@@ -33,10 +38,17 @@ export function isCapabilitiesManifestUnavailable(
 
 /** True when agent tools are likely unavailable (degraded LLM route). */
 export function isAgentLlmDegraded(agentLlm: CapabilitiesResponse['agentLlm']): boolean {
-  if ('degraded' in agentLlm && typeof agentLlm.degraded === 'boolean') {
+  if (typeof agentLlm.degraded === 'boolean') {
     return agentLlm.degraded
   }
   if (agentLlm.circuitState === 'open') return true
   if (agentLlm.lastHealthCheckAt && !agentLlm.lastHealthOk) return true
   return agentLlm.routing === 'capabilities' && !agentLlm.preferredAgentBaseUrl
+}
+
+/** Staging gate: slash commands from the manifest are ready to sync into the composer. */
+export function isSlashSyncReady(
+  data: CapabilitiesResponse | null | undefined,
+): boolean {
+  return Array.isArray(data?.slashCommands)
 }

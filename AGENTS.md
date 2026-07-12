@@ -23,7 +23,7 @@ Hermes UI is a Bun monorepo: `app/` (React 19 + Vite, port **5173**), `server/` 
   - `HERMES_ROUTING=capabilities|legacy` — operator rollback; `legacy` restores regex `selectLlmTools` subsetting + pre-LLM interceptors. Default is `capabilities` (LLM chooses tools).
   - `HERMES_AGENT_LLM_TIMEOUT_MS` — bounded probe timeout before recording an agent-endpoint failure (default 5000).
   - `HERMES_LM_BRIDGE=0|1` — optional auto-start of lm-bridge from `scripts/dev.ts` for local text chat only.
-  - Manifest: `GET /api/capabilities`; warm MCP+manifest: `POST /api/capabilities/warm`. Debug: `GET /api/debug/health` includes `capabilities` + `agentLlm`.
+  - Manifest: `GET /api/capabilities` (optional `?probe=1`); warm MCP+manifest+agent probe: `POST /api/capabilities/warm` (returns `mcpReconnect` + `agentLlm`). Debug: `GET /api/debug/health` includes `capabilities` + `agentLlm`. Staging checklist: `docs/CAPABILITIES-STAGING.md`.
 
 ### Lint / test / build
 - Lint: `bun run lint` (warnings are expected; exit 0).

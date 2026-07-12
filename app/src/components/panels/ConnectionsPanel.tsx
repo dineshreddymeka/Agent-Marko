@@ -4,18 +4,21 @@
  */
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, ChevronDown, ChevronRight, ExternalLink, Info } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { AlertTriangle, ChevronDown, ChevronRight, ExternalLink, Info, RefreshCw } from 'lucide-react'
 import { McpSubPanel } from '@app/components/panels/McpSubPanel'
 import { EmptyState } from '@app/components/common/EmptyState'
 import { Skeleton } from '@app/components/common/Skeleton'
 import { apiClient } from '@app/lib/api'
 import {
+  CAPABILITIES_QUERY_KEY,
   isAgentLlmDegraded,
   isCapabilitiesManifestUnavailable,
   useCapabilities,
+  warmCapabilities,
 } from '@app/hooks/useCapabilities'
 import { skillSourceLabel } from '@app/lib/labels'
+import { useUiStore } from '@app/stores/ui'
 import type { CapabilitySkillEntry, CapabilitiesResponse, CoworkSetupResponse } from '@hermes/shared'
 
 function SectionHeading({ title, description }: { title: string; description?: string }) {
@@ -269,6 +272,9 @@ function AgentToolsSection({
 }
 
 export function ConnectionsPanel() {
+  const queryClient = useQueryClient()
+  const addToast = useUiStore((s) => s.addToast)
+  const [warming, setWarming] = useState(false)
   const {
     data: capabilities,
     isLoading,
@@ -284,13 +290,53 @@ export function ConnectionsPanel() {
   )
   const degraded = capabilities ? isAgentLlmDegraded(capabilities.agentLlm) : false
 
+  const onWarm = async () => {
+    setWarming(true)
+    try {
+      const result = await warmCapabilities()
+      await queryClient.invalidateQueries({ queryKey: CAPABILITIES_QUERY_KEY })
+      const mcpNote = result.mcpReconnect
+        ? result.mcpReconnect.ok
+          ? 'MCP reconnected'
+          : `MCP reconnect failed${result.mcpReconnect.error ? `: ${result.mcpReconnect.error}` : ''}`
+        : 'Manifest refreshed'
+      const routeNote = result.agentLlm.degraded
+        ? 'agent route degraded'
+        : 'agent route healthy'
+      addToast({
+        title: 'Capabilities warmed',
+        description: `${mcpNote}; ${routeNote}; ${result.slashCommands} slash command(s).`,
+      })
+    } catch (err) {
+      addToast({
+        title: 'Warm failed',
+        description: err instanceof Error ? err.message : 'Could not warm capabilities.',
+      })
+    } finally {
+      setWarming(false)
+    }
+  }
+
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div className="border-b border-border pb-4">
-        <h3 className="text-base font-semibold tracking-tight text-fg">Capabilities</h3>
-        <p className="mt-1 max-w-2xl text-xs leading-relaxed text-fg-muted">
-          MCP servers, Cowork, skills, and agent tools available to Open Jarvis.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold tracking-tight text-fg">Capabilities</h3>
+            <p className="mt-1 max-w-2xl text-xs leading-relaxed text-fg-muted">
+              MCP servers, Cowork, skills, and agent tools available to Open Jarvis.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void onWarm()}
+            disabled={warming}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-fg hover:bg-bg-muted disabled:opacity-60"
+          >
+            <RefreshCw size={12} className={warming ? 'animate-spin' : undefined} aria-hidden />
+            {warming ? 'Warming…' : 'Warm MCP + probe'}
+          </button>
+        </div>
         {capabilities?.plugins?.length ? (
           <div className="mt-3">
             <PluginsOverview plugins={capabilities.plugins} />

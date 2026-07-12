@@ -870,6 +870,70 @@ export const schemas: Record<string, JsonSchema> = {
     },
     required: ['id', 'sourceType', 'sourceId', 'operation', 'status'],
   },
+  AgentLlmHealthSnapshot: {
+    type: 'object',
+    properties: {
+      preferredAgentBaseUrl: { type: ['string', 'null'] },
+      bridgeFallbackBaseUrl: { type: 'string' },
+      circuitState: { type: 'string', enum: ['closed', 'open', 'half_open'] },
+      consecutiveFailures: { type: 'integer' },
+      lastFailure: { type: ['string', 'null'] },
+      lastSuccessAt: { type: ['string', 'null'] },
+      lastHealthCheckAt: { type: ['string', 'null'] },
+      lastHealthOk: { type: 'boolean' },
+      routing: { type: 'string', enum: ['legacy', 'capabilities'] },
+      timeoutMs: { type: 'integer' },
+      degraded: { type: 'boolean' },
+      toolsEnabled: { type: 'boolean' },
+    },
+    required: ['circuitState', 'routing', 'degraded', 'toolsEnabled', 'timeoutMs'],
+  },
+  CapabilitiesResponse: {
+    type: 'object',
+    properties: {
+      tools: { type: 'array', items: { type: 'object', additionalProperties: true } },
+      skills: { type: 'array', items: { type: 'object', additionalProperties: true } },
+      plugins: { type: 'array', items: { type: 'object', additionalProperties: true } },
+      slashCommands: { type: 'array', items: { type: 'object', additionalProperties: true } },
+      refreshedAt: { type: 'string' },
+      retrievalMode: { type: 'string', enum: ['semantic', 'lexical', 'legacy'] },
+      routing: { type: 'string', enum: ['legacy', 'capabilities'] },
+      agentLlm: { $ref: '#/components/schemas/AgentLlmHealthSnapshot' },
+    },
+    required: ['tools', 'skills', 'plugins', 'slashCommands', 'routing', 'agentLlm'],
+  },
+  CapabilitiesRefreshResponse: {
+    type: 'object',
+    properties: {
+      ok: { type: 'boolean', const: true },
+      refreshedAt: { type: 'string' },
+      tools: { type: 'integer' },
+      skills: { type: 'integer' },
+      plugins: { type: 'integer' },
+      slashCommands: { type: 'integer' },
+      agentLlm: { $ref: '#/components/schemas/AgentLlmHealthSnapshot' },
+    },
+    required: ['ok', 'refreshedAt', 'tools', 'skills', 'plugins', 'slashCommands', 'agentLlm'],
+  },
+  CapabilitiesWarmResponse: {
+    allOf: [
+      { $ref: '#/components/schemas/CapabilitiesRefreshResponse' },
+      {
+        type: 'object',
+        properties: {
+          mcpReconnect: {
+            type: 'object',
+            properties: {
+              ok: { type: 'boolean' },
+              error: { type: ['string', 'null'] },
+            },
+            required: ['ok', 'error'],
+          },
+        },
+        required: ['mcpReconnect'],
+      },
+    ],
+  },
   DebugHealthResponse: {
     type: 'object',
     properties: {
@@ -894,6 +958,8 @@ export const schemas: Record<string, JsonSchema> = {
         },
         required: ['baseUrl', 'mode', 'mock'],
       },
+      agentLlm: { $ref: '#/components/schemas/AgentLlmHealthSnapshot' },
+      capabilities: { type: 'object', additionalProperties: true },
       memory: { type: 'object', additionalProperties: true },
       uptime: { type: 'number' },
     },

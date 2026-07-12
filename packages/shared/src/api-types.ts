@@ -437,9 +437,9 @@ export interface AgentLlmHealthSnapshot {
   lastHealthOk: boolean
   routing: 'legacy' | 'capabilities'
   timeoutMs: number
-  /** Present when the server merges resolveAgentLlmRoute into the payload. */
-  degraded?: boolean
-  toolsEnabled?: boolean
+  /** True when tools are unavailable (open circuit, missing agent URL, or failed probe). */
+  degraded: boolean
+  toolsEnabled: boolean
 }
 
 export interface CapabilitiesResponse {
@@ -458,6 +458,21 @@ export interface CapabilitiesResponse {
   retrievalMode: 'semantic' | 'lexical' | 'legacy'
   routing: 'legacy' | 'capabilities'
   agentLlm: AgentLlmHealthSnapshot
+}
+
+/** POST /api/capabilities and POST /api/capabilities/warm */
+export interface CapabilitiesRefreshResponse {
+  ok: true
+  refreshedAt: string
+  tools: number
+  skills: number
+  plugins: number
+  slashCommands: number
+  agentLlm: AgentLlmHealthSnapshot
+  mcpReconnect?: {
+    ok: boolean
+    error: string | null
+  }
 }
 
 /** GET/PUT /api/approval/config */
