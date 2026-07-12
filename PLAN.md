@@ -96,7 +96,7 @@ Rebuild the agent WebUI as **Open Jarvis** from the Hermes WebUI concept (vanill
 - [ ] Cowork tasks use auto-approve (`OPEN_COWORK_AUTO_APPROVE=true`) — locked with global policy
 
 #### Phase 10 — Jarvis indexer / recall · **Pending** · auto-approve
-- [ ] Restore/finish `server/src/rest/indexer.ts` + `index_search` agent tool
+- [x] Indexer service restored (`queueRunEventIndex` / cowork / office artifacts) + `/api/indexer/status` live
 - [ ] Wire recall into context builder for chat turns
 - [ ] Watcher/worker ops docs; drain endpoint in Tasks/Debug UI
 - [ ] Indexer jobs never block on HITL (auto-approve)
@@ -114,7 +114,7 @@ Rebuild the agent WebUI as **Open Jarvis** from the Hermes WebUI concept (vanill
 #### Phase 13 — Hardening leftovers · **Pending** · auto-approve
 - [ ] Optional OpenTelemetry spans (env-gated OTLP exporter)
 - [ ] ESLint `import/no-restricted-paths` (app ↛ server)
-- [ ] Restore API tokens REST handler if still imported by router
+- [x] Restore API tokens REST handler + `api_tokens` repository
 - [ ] Restore missing tracker docs or drop dead links (`SOURCE-OF-TRUTH`, `FEATURE-VERIFICATION`, `DATABASE-DESIGN`, `PARALLEL-AGENT-PLAN`)
 - [ ] MCP HTTP transport file restore if still referenced
 
