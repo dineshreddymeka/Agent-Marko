@@ -130,4 +130,65 @@ describe.skipIf(!enabled)('jarvis indexer integrity (integration)', () => {
     expect(Number(row?.attempts)).toBe(0)
     expect(Number(row?.priority)).toBeGreaterThanOrEqual(2)
   })
+
+  test('search filters by pathPrefix and sourceTypes with FTS when no embedding', async () => {
+    const pathA = `src/${randomUUID()}/alpha.ts`
+    const pathB = `docs/${randomUUID()}/readme.md`
+    await indexerRepo.upsertDocumentWithChunks(
+      {
+        sourceType: 'workspace_file',
+        sourceId: pathA,
+        path: pathA,
+        title: 'alpha.ts',
+        contentHash: 'hash-a',
+        tags: ['code'],
+        metadata: { embeddingPending: true },
+      },
+      [{ chunkIndex: 0, content: 'unique alpha widget factory', embedding: null }],
+    )
+    await indexerRepo.upsertDocumentWithChunks(
+      {
+        sourceType: 'workspace_file',
+        sourceId: pathB,
+        path: pathB,
+        title: 'readme.md',
+        contentHash: 'hash-b',
+        tags: ['docs'],
+      },
+      [{ chunkIndex: 0, content: 'unique alpha widget factory in docs', embedding: null }],
+    )
+
+    const hits = await indexerRepo.search('unique alpha widget', null, {
+      topK: 10,
+      sourceTypes: ['workspace_file'],
+      pathPrefix: 'src/',
+    })
+    expect(hits.length).toBeGreaterThan(0)
+    expect(hits.every((hit) => hit.path?.startsWith('src/'))).toBe(true)
+    expect(hits.some((hit) => hit.path === pathA)).toBe(true)
+    expect(hits.some((hit) => hit.path === pathB)).toBe(false)
+  })
+
+  test('embeddingPending metadata is preserved on FTS-only upsert', async () => {
+    const sourceId = `pending/${randomUUID()}.ts`
+    await indexerRepo.upsertDocumentWithChunks(
+      {
+        sourceType: 'workspace_file',
+        sourceId,
+        path: sourceId,
+        contentHash: 'pending-hash',
+        metadata: { embeddingPending: true },
+      },
+      [{ chunkIndex: 0, content: 'pending embedding body', embedding: null }],
+    )
+    const doc = await indexerRepo.getDocument('workspace_file', sourceId)
+    expect(doc?.chunkCount).toBe(1)
+    const db = getDb()
+    const rows = await db.execute(sql`
+      SELECT metadata->>'embeddingPending' AS pending
+      FROM jarvis_index_documents
+      WHERE source_type = 'workspace_file' AND source_id = ${sourceId}
+    `)
+    expect(String((rows as unknown as Array<Record<string, unknown>>)[0]?.pending)).toBe('true')
+  })
 })

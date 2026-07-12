@@ -26,6 +26,7 @@ export const CORE_TOOL_NAMES = [
   'memory_search',
   'memory_save',
   'web_search',
+  'fetch_url',
   'index_search',
   'skill_search',
 ] as const
@@ -112,6 +113,26 @@ function strengthenDescriptions(tools: LlmTool[]): LlmTool[] {
           ...t.function,
           description:
             'Render an interactive A2UI surface in chat for structured UI beyond plain markdown.',
+        },
+      }
+    }
+    if (name === 'web_search') {
+      return {
+        ...t,
+        function: {
+          ...t.function,
+          description:
+            'Search the live web for time-sensitive or unknown facts (news, scores, prices, docs, "today"). Prefer this over guessing; then call fetch_url on the best result.',
+        },
+      }
+    }
+    if (name === 'fetch_url') {
+      return {
+        ...t,
+        function: {
+          ...t.function,
+          description:
+            'Fetch a URL and return readable text (HTML stripped) or JSON. Use after web_search on the best hit when you need page contents.',
         },
       }
     }

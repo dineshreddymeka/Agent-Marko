@@ -65,7 +65,8 @@ export async function handleSearch(req: Request, path: string): Promise<Response
 
   try {
     const sourceTypes = csv(url.searchParams.get('sourceTypes'))
-      .concat(type && INDEX_SOURCE_TYPES.has(type as IndexSourceType) ? [type] : [])
+      .concat(type ? [type] : [])
+      .map((value) => (value === 'file' ? 'workspace_file' : value))
       .filter((value, index, all) => all.indexOf(value) === index)
       .filter((value): value is IndexSourceType => INDEX_SOURCE_TYPES.has(value as IndexSourceType))
     const { searchRecallIndex } = await import('../indexer/retriever')

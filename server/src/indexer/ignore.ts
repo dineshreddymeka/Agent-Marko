@@ -1,4 +1,5 @@
 import { basename, extname } from 'node:path'
+import { config } from '../config'
 
 const TEXT_EXTENSIONS = new Set([
   '.ts',
@@ -47,10 +48,21 @@ export function normalizeIndexPath(path: string): string {
   return path.replace(/\\/g, '/').replace(/^\.\//, '')
 }
 
+function configuredExcludeSegments(): Set<string> {
+  const raw = config.INDEXER_EXCLUDE_GLOBS ?? ''
+  const extras = raw
+    .split(',')
+    .map((part) => part.trim().replace(/^(\*\*\/|\*\/|\*)/, '').replace(/\/\*$/, ''))
+    .filter(Boolean)
+  return new Set(extras)
+}
+
 export function isIgnoredPath(rel: string): boolean {
   const normalized = normalizeIndexPath(rel)
   const parts = normalized.split('/')
   if (parts.some((part) => IGNORED_SEGMENTS.has(part))) return true
+  const extras = configuredExcludeSegments()
+  if (extras.size && parts.some((part) => extras.has(part))) return true
   if (SECRET_NAME_RE.test(normalized)) return true
   return false
 }

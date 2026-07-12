@@ -14,6 +14,7 @@ const PANEL_LABELS: Record<PanelName, string> = {
   office: 'Office',
   briefing: 'Briefing',
   cron: 'Cowork',
+  kanban: 'Kanban',
   profiles: 'Profiles',
   settings: 'Settings',
 }
@@ -33,6 +34,7 @@ export const PANEL_ROUTE_ALIASES: Record<string, PanelName> = {
   /** Briefly / Microsoft Graph screen lives under Office → Briefing */
   briefly: 'office',
   briefing: 'office',
+  board: 'kanban',
 }
 
 function prettifySnakeCase(value: string): string {
@@ -58,6 +60,12 @@ const TOOL_LABELS: Record<string, string> = {
   cron_delete: 'Delete scheduled task',
   delegate_to_agent: 'Delegate to agent',
   delegate_to_cowork: 'Delegate to Open Cowork',
+  kanban_create: 'Create kanban task',
+  kanban_list: 'List kanban tasks',
+  kanban_show: 'Show kanban task',
+  kanban_complete: 'Complete kanban task',
+  kanban_block: 'Block kanban task',
+  kanban_comment: 'Comment on kanban task',
 }
 
 const TOOL_CALL_STATUS_LABELS: Record<string, string> = {
@@ -132,6 +140,16 @@ const CRON_STEP_TYPE_LABELS: Record<string, string> = {
   skill: 'Skill',
   mcp: 'MCP tool',
   prompt: 'Prompt',
+}
+
+const KANBAN_TASK_STATUS_LABELS: Record<string, string> = {
+  triage: 'Triage',
+  todo: 'Todo',
+  ready: 'Ready',
+  running: 'Running',
+  blocked: 'Blocked',
+  done: 'Done',
+  archived: 'Archived',
 }
 
 const MCP_EVENT_TYPE_LABELS: Record<string, string> = {
@@ -219,6 +237,10 @@ export function coworkTaskStatusLabel(status: string): string {
 
 export function cronWorkflowStepTypeLabel(type: string): string {
   return mapLabel(CRON_STEP_TYPE_LABELS, type)
+}
+
+export function kanbanTaskStatusLabel(status: string): string {
+  return mapLabel(KANBAN_TASK_STATUS_LABELS, status)
 }
 
 export function mcpEventTypeLabel(eventType: string): string {

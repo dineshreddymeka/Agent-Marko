@@ -47,6 +47,21 @@ import './tools/chrome'
 const MAX_TOOL_ITERATIONS = 20
 const THINKING_FLUSH_MS = 100
 
+/** Consecutive calls in this set run via Promise.all (no mutating side effects). */
+const READ_ONLY_TOOL_NAMES = new Set([
+  'web_search',
+  'fetch_url',
+  'read_file',
+  'list_dir',
+  'memory_search',
+  'index_search',
+  'skill_search',
+])
+
+function isParallelReadOnlyTool(name: string): boolean {
+  return READ_ONLY_TOOL_NAMES.has(name) && !isDangerous(name)
+}
+
 async function emitContextUsage(
   emit: EventEmitter,
   runUsage: { promptTokens: number; completionTokens: number; totalTokens: number },
@@ -609,15 +624,24 @@ export async function runNativeAgent(
         })),
       })
 
-      for (const call of calls) {
-        if (signal.aborted) return
-        let parsedArgs: Record<string, unknown> = {}
-        try {
-          parsedArgs = JSON.parse(call.arguments || '{}') as Record<string, unknown>
-        } catch {
-          parsedArgs = { _raw: call.arguments, _parseError: true }
-        }
+      type ToolCallItem = (typeof calls)[number]
+      type ToolExecOutcome = {
+        call: ToolCallItem
+        parsedArgs: Record<string, unknown>
+        result: unknown
+        errorPayload: ReturnType<typeof formatToolError> | undefined
+        aborted: boolean
+      }
 
+      const parseToolArgs = (raw: string): Record<string, unknown> => {
+        try {
+          return JSON.parse(raw || '{}') as Record<string, unknown>
+        } catch {
+          return { _raw: raw, _parseError: true }
+        }
+      }
+
+      const emitToolCallLifecycle = async (call: ToolCallItem) => {
         await emit({
           type: EventType.TOOL_CALL_START,
           toolCallId: call.id,
@@ -630,10 +654,16 @@ export async function runNativeAgent(
           delta: call.arguments,
         })
         await emit({ type: EventType.TOOL_CALL_END, toolCallId: call.id })
+      }
 
+      const executeOneTool = async (
+        call: ToolCallItem,
+        parsedArgs: Record<string, unknown>,
+      ): Promise<ToolExecOutcome> => {
         const tool = getTool(call.name)
         let result: unknown
         let errorPayload: ReturnType<typeof formatToolError> | undefined
+        let aborted = false
 
         try {
           if (!tool) throw new ToolError(`Unknown tool: ${call.name}`)
@@ -649,7 +679,15 @@ export async function runNativeAgent(
             emit,
             dangerous: isDangerous(call.name),
           })
-          if (signal.aborted) return
+          if (signal.aborted) {
+            return {
+              call,
+              parsedArgs,
+              result: { error: 'Aborted' },
+              errorPayload: undefined,
+              aborted: true,
+            }
+          }
           if (isDebugChannel('tools')) {
             log.debug('Tool invoke start', {
               toolName: call.name,
@@ -682,35 +720,36 @@ export async function runNativeAgent(
           if (signal.aborted || (err instanceof Error && err.name === 'AbortError')) {
             errorPayload = formatToolError(err)
             result = errorPayload ?? { error: 'Aborted' }
-            const resultStr = typeof result === 'string' ? result : JSON.stringify(result)
-            try {
-              await emit({
-                type: EventType.TOOL_CALL_RESULT,
-                toolCallId: call.id,
-                messageId: randomUUID(),
-                content: resultStr,
-              })
-            } catch {
-              /* best-effort */
-            }
-            return
+            aborted = true
+          } else {
+            errorPayload = formatToolError(err)
+            result = errorPayload
+            log.child({ toolName: call.name, toolCallId: call.id }).warn('Tool execution failed', {
+              error: err,
+              code: errorPayload.code,
+            })
           }
-          errorPayload = formatToolError(err)
-          result = errorPayload
-          log.child({ toolName: call.name, toolCallId: call.id }).warn('Tool execution failed', {
-            error: err,
-            code: errorPayload.code,
-          })
         }
 
+        return { call, parsedArgs, result, errorPayload, aborted }
+      }
+
+      const finalizeToolOutcome = async (outcome: ToolExecOutcome): Promise<boolean> => {
+        const { call, parsedArgs, result, errorPayload, aborted } = outcome
         const resultStr = typeof result === 'string' ? result : JSON.stringify(result)
-        await emit({
-          type: EventType.TOOL_CALL_RESULT,
-          toolCallId: call.id,
-          messageId: randomUUID(),
-          content: resultStr,
-          role: 'tool',
-        })
+        try {
+          await emit({
+            type: EventType.TOOL_CALL_RESULT,
+            toolCallId: call.id,
+            messageId: randomUUID(),
+            content: resultStr,
+            role: 'tool',
+          })
+        } catch {
+          /* best-effort on abort */
+        }
+
+        if (aborted) return true
 
         if (errorPayload) {
           await emit({
@@ -744,6 +783,42 @@ export async function runNativeAgent(
           content: resultStr,
           tool_call_id: call.id,
         })
+        return false
+      }
+
+      let callIdx = 0
+      while (callIdx < calls.length) {
+        if (signal.aborted) return
+        const head = calls[callIdx]!
+        if (isParallelReadOnlyTool(head.name)) {
+          const batch: ToolCallItem[] = []
+          while (callIdx < calls.length && isParallelReadOnlyTool(calls[callIdx]!.name)) {
+            batch.push(calls[callIdx]!)
+            callIdx++
+          }
+          const prepared = batch.map((call) => ({
+            call,
+            parsedArgs: parseToolArgs(call.arguments),
+          }))
+          for (const { call } of prepared) {
+            await emitToolCallLifecycle(call)
+          }
+          const outcomes = await Promise.all(
+            prepared.map(({ call, parsedArgs }) => executeOneTool(call, parsedArgs)),
+          )
+          for (const outcome of outcomes) {
+            const stop = await finalizeToolOutcome(outcome)
+            if (stop) return
+          }
+        } else {
+          const call = calls[callIdx]!
+          callIdx++
+          const parsedArgs = parseToolArgs(call.arguments)
+          await emitToolCallLifecycle(call)
+          const outcome = await executeOneTool(call, parsedArgs)
+          const stop = await finalizeToolOutcome(outcome)
+          if (stop) return
+        }
       }
     }
 

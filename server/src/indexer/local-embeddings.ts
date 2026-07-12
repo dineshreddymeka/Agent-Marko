@@ -2,16 +2,15 @@ import { config } from '../config'
 import { logger } from '../log'
 import { embedBatch, embedText } from '../vector/embeddings'
 
-function hostname(): string | null {
+function hostnameOf(url: string): string | null {
   try {
-    return new URL(config.LLM_BASE_URL).hostname.toLowerCase()
+    return new URL(url).hostname.toLowerCase()
   } catch {
     return null
   }
 }
 
-export function isLocalEmbeddingEndpoint(): boolean {
-  const host = hostname()
+function isLocalHost(host: string | null): boolean {
   if (!host) return false
   return (
     host === 'localhost' ||
@@ -24,10 +23,24 @@ export function isLocalEmbeddingEndpoint(): boolean {
   )
 }
 
+/** Prefer dedicated embeddings URL, then agent LLM, then LLM_BASE_URL. */
+export function embeddingEndpointUrl(): string {
+  return (
+    config.HERMES_EMBEDDINGS_URL?.trim() ||
+    config.HERMES_AGENT_LLM_URL?.trim() ||
+    config.LLM_BASE_URL ||
+    ''
+  )
+}
+
+export function isLocalEmbeddingEndpoint(): boolean {
+  return isLocalHost(hostnameOf(embeddingEndpointUrl()))
+}
+
 export async function embedBatchLocal(texts: string[]): Promise<number[][]> {
   if (!isLocalEmbeddingEndpoint()) {
     throw new Error(
-      `Indexer embeddings require a local LLM_BASE_URL, got ${config.LLM_BASE_URL || '(empty)'}`,
+      `Indexer embeddings require a local embeddings endpoint, got ${embeddingEndpointUrl() || '(empty)'}`,
     )
   }
   return embedBatch(texts)

@@ -52,6 +52,8 @@ describe('capabilities retrieval', () => {
       'document_form_show',
       'delegate_to_cowork',
       'a2ui_render',
+      'web_search',
+      'fetch_url',
     ] as const) {
       expect(CORE_TOOL_NAMES.includes(name)).toBe(true)
       expect(turn.offered).toContain(name)

@@ -81,12 +81,26 @@ export async function runCleanupOnce(opts: CleanupOptions = {}): Promise<Cleanup
     const now = Date.now()
     const { runEventsRepo } = await import('../db/repositories/run_events')
     const { sessionsRepo } = await import('../db/repositories/sessions')
-    summary.runEventsDeleted = await runEventsRepo.deleteOlderThan(
-      new Date(now - runEventDays * DAY_MS),
-    )
-    summary.archivedSessionsDeleted = await sessionsRepo.deleteArchivedOlderThan(
-      new Date(now - sessionDays * DAY_MS),
-    )
+    const runEventCutoff = new Date(now - runEventDays * DAY_MS)
+    const sessionCutoff = new Date(now - sessionDays * DAY_MS)
+
+    const deletedRunEvents = await runEventsRepo.deleteOlderThanReturning(runEventCutoff)
+    summary.runEventsDeleted = deletedRunEvents.length
+    if (deletedRunEvents.length && config.INDEXER_ENABLED) {
+      const { queueRuntimeDelete } = await import('../indexer/service')
+      await Promise.all(
+        deletedRunEvents.map((id) => queueRuntimeDelete('run_event', id).catch(() => undefined)),
+      )
+    }
+
+    const deletedSessions = await sessionsRepo.deleteArchivedOlderThanReturning(sessionCutoff)
+    summary.archivedSessionsDeleted = deletedSessions.length
+    if (deletedSessions.length && config.INDEXER_ENABLED) {
+      const { queueRuntimeDelete } = await import('../indexer/service')
+      await Promise.all(
+        deletedSessions.map((id) => queueRuntimeDelete('session', id).catch(() => undefined)),
+      )
+    }
   }
 
   lastRunAt = new Date().toISOString()

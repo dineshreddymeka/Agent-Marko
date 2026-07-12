@@ -202,6 +202,35 @@ export interface SearchResult {
   sourceType?: string
 }
 
+/** Indexer source types accepted by /api/search and index_search. */
+export type IndexSourceType =
+  | 'workspace_file'
+  | 'file'
+  | 'message'
+  | 'memory'
+  | 'skill'
+  | 'session'
+  | 'cron_job'
+  | 'run_event'
+  | 'cowork_task'
+  | 'office_artifact'
+
+/** Query filters for hybrid Jarvis recall search. */
+export interface IndexSearchFilters {
+  topK?: number
+  sourceTypes?: IndexSourceType[]
+  pathPrefix?: string
+  extension?: string
+  sessionId?: string
+  runId?: string
+  userId?: string
+  actionId?: string
+  from?: string
+  to?: string
+  tags?: string[]
+  includeDeleted?: boolean
+}
+
 /** @deprecated Prefer SearchResult */
 export type SearchHit = SearchResult
 
@@ -720,6 +749,13 @@ export interface DebugHealthResponse {
     mock: boolean
   }
   memory: Record<string, unknown>
+  jarvisIndexer?: {
+    documents: number
+    chunks: number
+    pendingJobs: number
+    failedJobs: number
+    [key: string]: unknown
+  }
   uptime: number
 }
 
@@ -831,4 +867,74 @@ export interface SettingRow {
   sessionId: string | null
   createdAt: string
   updatedAt: string
+}
+
+// ---------------------------------------------------------------------------
+// Kanban (ported from hermes-agent kanban domain model)
+// ---------------------------------------------------------------------------
+
+export type KanbanTaskStatus =
+  | 'triage'
+  | 'todo'
+  | 'ready'
+  | 'running'
+  | 'blocked'
+  | 'done'
+  | 'archived'
+
+export type KanbanBlockKind = 'dependency' | 'needs_input' | 'capability' | 'transient'
+
+export interface KanbanTask {
+  id: string
+  title: string
+  body: string | null
+  status: KanbanTaskStatus
+  priority: number
+  assignee: string | null
+  createdBy: string | null
+  blockKind: KanbanBlockKind | null
+  blockReason: string | null
+  result: string | null
+  summary: string | null
+  metadata: Record<string, unknown>
+  sessionId: string | null
+  runId: string | null
+  createdAt: string
+  updatedAt: string
+  startedAt: string | null
+  completedAt: string | null
+  /** Populated when the task is fetched with relations. */
+  parentIds?: string[]
+  childIds?: string[]
+  comments?: KanbanTaskComment[]
+}
+
+export interface KanbanTaskComment {
+  id: string
+  taskId: string
+  author: string
+  body: string
+  createdAt: string
+}
+
+export interface KanbanTaskLink {
+  id: string
+  parentId: string
+  childId: string
+  createdAt: string
+}
+
+export interface KanbanListResponse {
+  tasks: KanbanTask[]
+  total: number
+}
+
+export interface KanbanStatusCounts {
+  triage: number
+  todo: number
+  ready: number
+  running: number
+  blocked: number
+  done: number
+  archived: number
 }

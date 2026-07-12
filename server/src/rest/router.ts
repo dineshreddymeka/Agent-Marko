@@ -15,6 +15,7 @@ import { handleApiTokens } from './tokens'
 import { handleOffice } from './office'
 import { handleIndexer } from './indexer'
 import { handleCapabilities } from './capabilities'
+import { handleKanban } from './kanban'
 import { handleOpenApiDocs } from './openapi/serve'
 import { jsonResponse } from './helpers'
 import { isHermesError } from '../errors'
@@ -39,6 +40,7 @@ const handlers: Array<{ prefix: string; handler: Handler }> = [
   { prefix: '/api/capabilities', handler: handleCapabilities },
   { prefix: '/api/debug', handler: handleDebug },
   { prefix: '/api/approval', handler: handleApproval },
+  { prefix: '/api/kanban', handler: handleKanban },
 ]
 
 export async function handleRest(req: Request): Promise<Response> {

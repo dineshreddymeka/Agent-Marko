@@ -110,22 +110,25 @@ export async function buildAgentContext(input: RunAgentInput): Promise<BuiltCont
     try {
       const embedding = await embedText(query)
       const topK = config.INDEXER_DEFAULT_TOP_K
+      const recallPromise = config.INDEXER_ENABLED
+        ? Promise.all([
+            searchRecallIndex({ query, topK: Math.min(3, topK), sessionId: input.threadId }).catch(
+              () => [],
+            ),
+            searchRecallIndex({
+              query,
+              topK: Math.min(3, topK),
+              sessionId: input.threadId,
+              runId: input.runId,
+            }).catch(() => []),
+            searchRecallIndex({ query, topK: Math.min(5, topK) }).catch(() => []),
+          ])
+        : Promise.resolve([[], [], []] as const)
       const [memories, skills, ftsMsgs, recallHits] = await Promise.all([
         memoryRepo.vectorSearch(embedding, 5).catch(() => []),
         skillsRepo.vectorSearch(embedding, 3).catch(() => []),
         messagesRepo.ftsSearch(query, 5).catch(() => []),
-        Promise.all([
-          searchRecallIndex({ query, topK: Math.min(3, topK), sessionId: input.threadId }).catch(
-            () => [],
-          ),
-          searchRecallIndex({
-            query,
-            topK: Math.min(3, topK),
-            sessionId: input.threadId,
-            runId: input.runId,
-          }).catch(() => []),
-          searchRecallIndex({ query, topK: Math.min(5, topK) }).catch(() => []),
-        ]),
+        recallPromise,
       ])
       memorySnippets = memories.map((m) => `[${m.kind}] ${m.content}`)
       skillSnippets = skills.map((s) => `# Skill: ${s.name}\n${s.bodyMd}`)
@@ -196,6 +199,13 @@ export async function buildAgentContext(input: RunAgentInput): Promise<BuiltCont
       'Do not ask what they want if they already said it.',
       'Never reply only with vague acknowledgments like "Understood. What would you like help with?" when the request is already specified.',
       'Never narrate internal planning in the reply (no "Preparing to respond", "Drafting a greeting", etc.). Reply with the user-facing answer only.',
+    ].join('\n'),
+  )
+  parts.push(
+    [
+      '## Internet',
+      'Live internet access is on by default via web_search and fetch_url.',
+      'For news, scores, prices, docs, "today"/current events, or anything outside your knowledge, prefer web_search then fetch_url on the best hit — do not guess.',
     ].join('\n'),
   )
   // Only inject cron steering when the user is actually asking about scheduling.

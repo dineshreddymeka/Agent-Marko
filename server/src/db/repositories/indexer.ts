@@ -123,8 +123,13 @@ function rowJob(row: DbRow): IndexJob {
 }
 
 function sourceTypeCondition(sourceTypes: IndexSourceType[]) {
+  const normalized = [
+    ...new Set(
+      sourceTypes.map((t) => ((t as string) === 'file' ? ('workspace_file' as IndexSourceType) : t)),
+    ),
+  ]
   return sql`d.source_type IN (${sql.join(
-    sourceTypes.map((sourceType) => sql`${sourceType}`),
+    normalized.map((sourceType) => sql`${sourceType}`),
     sql`, `,
   )})`
 }

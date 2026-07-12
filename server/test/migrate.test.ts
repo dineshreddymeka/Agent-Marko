@@ -35,6 +35,8 @@ describe('migration file discovery', () => {
     expect(files).toContain('0009_jarvis_indexer_perf.sql')
     expect(files).toContain('0011_jarvis_indexer_integrity.sql')
     expect(files).toContain('0012_index_jobs_columns.sql')
+    expect(files).toContain('0013_index_jobs_lock_columns.sql')
+    expect(files).toContain('0014_kanban.sql')
     for (let i = 1; i < files.length; i++) {
       expect(files[i]! > files[i - 1]!).toBe(true)
     }

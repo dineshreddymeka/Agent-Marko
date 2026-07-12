@@ -400,6 +400,68 @@ export const indexJobs = pgTable(
   ],
 )
 
+export const kanbanTasks = pgTable(
+  'kanban_tasks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    title: text('title').notNull(),
+    body: text('body'),
+    status: text('status').notNull().default('todo'),
+    priority: integer('priority').notNull().default(0),
+    assignee: text('assignee'),
+    createdBy: text('created_by'),
+    blockKind: text('block_kind'),
+    blockReason: text('block_reason'),
+    result: text('result'),
+    summary: text('summary'),
+    metadata: jsonb('metadata').notNull().default({}),
+    sessionId: uuid('session_id').references(() => sessions.id, { onDelete: 'set null' }),
+    runId: uuid('run_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('kanban_tasks_status_idx').on(t.status, t.priority, t.createdAt),
+    index('kanban_tasks_assignee_idx').on(t.assignee, t.status),
+    index('kanban_tasks_session_idx').on(t.sessionId),
+  ],
+)
+
+export const kanbanTaskLinks = pgTable(
+  'kanban_task_links',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    parentId: uuid('parent_id')
+      .notNull()
+      .references(() => kanbanTasks.id, { onDelete: 'cascade' }),
+    childId: uuid('child_id')
+      .notNull()
+      .references(() => kanbanTasks.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('kanban_task_links_parent_idx').on(t.parentId),
+    index('kanban_task_links_child_idx').on(t.childId),
+    uniqueIndex('kanban_task_links_pair_key').on(t.parentId, t.childId),
+  ],
+)
+
+export const kanbanTaskComments = pgTable(
+  'kanban_task_comments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => kanbanTasks.id, { onDelete: 'cascade' }),
+    author: text('author').notNull().default('user'),
+    body: text('body').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('kanban_task_comments_task_idx').on(t.taskId, t.createdAt)],
+)
+
 export const schema = {
   sessions,
   messages,
@@ -418,6 +480,9 @@ export const schema = {
   jarvisIndexActions,
   jarvisIndexActionLinks,
   indexJobs,
+  kanbanTasks,
+  kanbanTaskLinks,
+  kanbanTaskComments,
 }
 
 export type SessionRow = typeof sessions.$inferSelect
@@ -435,3 +500,6 @@ export type JarvisIndexChunkRow = typeof jarvisIndexChunks.$inferSelect
 export type JarvisIndexActionRow = typeof jarvisIndexActions.$inferSelect
 export type JarvisIndexActionLinkRow = typeof jarvisIndexActionLinks.$inferSelect
 export type IndexJobRow = typeof indexJobs.$inferSelect
+export type KanbanTaskRow = typeof kanbanTasks.$inferSelect
+export type KanbanTaskLinkRow = typeof kanbanTaskLinks.$inferSelect
+export type KanbanTaskCommentRow = typeof kanbanTaskComments.$inferSelect

@@ -24,6 +24,9 @@ Hermes UI is a Bun monorepo: `app/` (React 19 + Vite, port **5173**), `server/` 
   - `HERMES_AGENT_LLM_TIMEOUT_MS` — bounded probe timeout before recording an agent-endpoint failure (default 5000).
   - `HERMES_LM_BRIDGE=0|1` — optional auto-start of lm-bridge from `scripts/dev.ts` for local text chat only.
   - Manifest: `GET /api/capabilities` (optional `?probe=1`); warm MCP+manifest+agent probe: `POST /api/capabilities/warm` (returns `mcpReconnect` + `agentLlm`). Debug: `GET /api/debug/health` includes `capabilities` + `agentLlm`. Staging checklist: `docs/CAPABILITIES-STAGING.md`.
+  - **Internet (default-on):** `web_search` + `fetch_url` are always offered when tools are enabled. Needs a tool-capable `HERMES_AGENT_LLM_URL` (lm-bridge alone cannot run tools).
+    - `WEB_SEARCH_PROVIDER` — `auto` (race keyed providers when key set, else DuckDuckGo), `brave`, `tavily`, `serper`, or `duckduckgo`.
+    - `WEB_SEARCH_API_KEY` — required for Brave/Tavily/Serper quality; prefer `WEB_SEARCH_PROVIDER=tavily` (or brave) in production. DuckDuckGo remains the keyless fallback.
 
 ### Lint / test / build
 - Lint: `bun run lint` (warnings are expected; exit 0).

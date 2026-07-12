@@ -8,6 +8,56 @@ export type WebSearchResult = {
   snippet: string
 }
 
+const SEARCH_CACHE_TTL_MS = 5 * 60_000
+const FETCH_CACHE_TTL_MS = 15 * 60_000
+const FETCH_MAX_BYTES = 200_000
+const FETCH_TIMEOUT_MS = 8_000
+const FETCH_TEXT_MAX_CHARS = 24_000
+
+type CacheEntry<T> = { expiresAt: number; value: T }
+
+const searchCache = new Map<string, CacheEntry<{ provider: string; query: string; results: WebSearchResult[] }>>()
+const fetchCache = new Map<string, CacheEntry<Record<string, unknown>>>()
+
+/** Test helper — clears in-memory TTL caches. */
+export function clearWebCaches(): void {
+  searchCache.clear()
+  fetchCache.clear()
+}
+
+function cacheGet<T>(map: Map<string, CacheEntry<T>>, key: string): T | undefined {
+  const hit = map.get(key)
+  if (!hit) return undefined
+  if (Date.now() > hit.expiresAt) {
+    map.delete(key)
+    return undefined
+  }
+  return hit.value
+}
+
+function cacheSet<T>(map: Map<string, CacheEntry<T>>, key: string, value: T, ttlMs: number): void {
+  map.set(key, { value, expiresAt: Date.now() + ttlMs })
+}
+
+/** Strip HTML to readable text (shared pattern with chrome_get_content). */
+export function htmlToReadableText(html: string, maxChars = FETCH_TEXT_MAX_CHARS): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxChars)
+}
+
 async function searchBrave(query: string, signal?: AbortSignal): Promise<WebSearchResult[]> {
   const key = config.WEB_SEARCH_API_KEY
   if (!key) throw new ToolError('BRAVE search requires WEB_SEARCH_API_KEY')
@@ -94,51 +144,144 @@ async function searchDuckDuckGo(query: string, signal?: AbortSignal): Promise<We
   }
   for (const topic of json.RelatedTopics ?? []) {
     if (topic.Text && topic.FirstURL) {
-      results.push({ title: topic.Text.split(' - ')[0] ?? topic.Text, url: topic.FirstURL, snippet: topic.Text })
+      results.push({
+        title: topic.Text.split(' - ')[0] ?? topic.Text,
+        url: topic.FirstURL,
+        snippet: topic.Text,
+      })
     }
     if (results.length >= 8) break
   }
   return results
 }
 
-export async function webSearch(query: string, signal?: AbortSignal): Promise<{
+async function raceKeyedProviders(
+  query: string,
+  signal?: AbortSignal,
+): Promise<{ provider: string; results: WebSearchResult[] }> {
+  const runners: Array<{ provider: string; run: () => Promise<WebSearchResult[]> }> = [
+    { provider: 'brave', run: () => searchBrave(query, signal) },
+    { provider: 'tavily', run: () => searchTavily(query, signal) },
+    { provider: 'serper', run: () => searchSerper(query, signal) },
+  ]
+  const wrapped = runners.map(async ({ provider, run }) => {
+    const results = await run()
+    return { provider, results }
+  })
+  try {
+    return await Promise.any(wrapped)
+  } catch {
+    // AggregateError when every keyed provider fails — caller falls back to DDG.
+    throw new ToolError('All keyed web search providers failed')
+  }
+}
+
+export async function webSearch(
+  query: string,
+  signal?: AbortSignal,
+): Promise<{
   provider: string
   query: string
   results: WebSearchResult[]
+  cached?: boolean
 }> {
   const provider = (config.WEB_SEARCH_PROVIDER || 'auto').toLowerCase()
   const hasKey = Boolean(config.WEB_SEARCH_API_KEY)
+  const cacheKey = `search:${provider}:${hasKey ? 'k' : 'nk'}:${query.trim().toLowerCase()}`
+  const cached = cacheGet(searchCache, cacheKey)
+  if (cached) return { ...cached, cached: true }
 
-  if (provider === 'brave' || (provider === 'auto' && hasKey && config.WEB_SEARCH_PROVIDER === 'brave')) {
-    return { provider: 'brave', query, results: await searchBrave(query, signal) }
-  }
-  if (provider === 'tavily') {
-    return { provider: 'tavily', query, results: await searchTavily(query, signal) }
-  }
-  if (provider === 'serper') {
-    return { provider: 'serper', query, results: await searchSerper(query, signal) }
-  }
-  if (provider === 'auto' && hasKey) {
-    // Prefer Brave when key present but provider unset-ish; try brave then tavily
+  let out: { provider: string; query: string; results: WebSearchResult[] }
+
+  if (provider === 'brave') {
+    out = { provider: 'brave', query, results: await searchBrave(query, signal) }
+  } else if (provider === 'tavily') {
+    out = { provider: 'tavily', query, results: await searchTavily(query, signal) }
+  } else if (provider === 'serper') {
+    out = { provider: 'serper', query, results: await searchSerper(query, signal) }
+  } else if (provider === 'duckduckgo') {
+    out = { provider: 'duckduckgo', query, results: await searchDuckDuckGo(query, signal) }
+  } else if (provider === 'auto' && hasKey) {
     try {
-      return { provider: 'brave', query, results: await searchBrave(query, signal) }
+      const raced = await raceKeyedProviders(query, signal)
+      out = { provider: raced.provider, query, results: raced.results }
     } catch {
-      try {
-        return { provider: 'tavily', query, results: await searchTavily(query, signal) }
-      } catch {
-        return { provider: 'serper', query, results: await searchSerper(query, signal) }
-      }
+      out = { provider: 'duckduckgo', query, results: await searchDuckDuckGo(query, signal) }
     }
+  } else {
+    out = { provider: 'duckduckgo', query, results: await searchDuckDuckGo(query, signal) }
   }
-  return { provider: 'duckduckgo', query, results: await searchDuckDuckGo(query, signal) }
+
+  cacheSet(searchCache, cacheKey, out, SEARCH_CACHE_TTL_MS)
+  return out
 }
 
-const FETCH_MAX_BYTES = 200_000
-const FETCH_TIMEOUT_MS = 20_000
+export async function fetchUrlContent(
+  target: string,
+  opts: { maxBytes?: number; signal: AbortSignal },
+): Promise<Record<string, unknown>> {
+  let parsed: URL
+  try {
+    parsed = new URL(target)
+  } catch {
+    throw new ToolError(`Invalid URL: ${target}`)
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new ToolError('Only http(s) URLs are allowed')
+  }
+
+  const maxBytes = Math.min(Number(opts.maxBytes) || FETCH_MAX_BYTES, FETCH_MAX_BYTES)
+  const cacheKey = `fetch:${parsed.toString()}:${maxBytes}`
+  const cached = cacheGet(fetchCache, cacheKey)
+  if (cached) return { ...cached, cached: true }
+
+  const controller = new AbortController()
+  const onAbort = () => controller.abort()
+  opts.signal.addEventListener('abort', onAbort, { once: true })
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+
+  try {
+    const res = await fetch(target, {
+      signal: controller.signal,
+      headers: { Accept: 'text/html,application/json,text/plain,*/*' },
+      redirect: 'follow',
+    })
+    const contentType = res.headers.get('content-type') ?? 'application/octet-stream'
+    const buf = new Uint8Array(await res.arrayBuffer())
+    const truncated = buf.byteLength > maxBytes
+    const slice = truncated ? buf.slice(0, maxBytes) : buf
+    let text = new TextDecoder('utf-8', { fatal: false }).decode(slice)
+    const isHtml = /html/i.test(contentType) || /^\s*</.test(text)
+    const isJson = /json/i.test(contentType)
+    if (isHtml && !isJson) {
+      text = htmlToReadableText(text)
+    }
+
+    const out = {
+      status: res.status,
+      contentType,
+      bytes: buf.byteLength,
+      truncated,
+      stripped: Boolean(isHtml && !isJson),
+      content: text,
+    }
+    cacheSet(fetchCache, cacheKey, out, FETCH_CACHE_TTL_MS)
+    return out
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new ToolError('fetch_url timed out or aborted')
+    }
+    throw new ToolError(String(err))
+  } finally {
+    clearTimeout(timer)
+    opts.signal.removeEventListener('abort', onAbort)
+  }
+}
 
 registerTool({
   name: 'web_search',
-  description: 'Search the web (Brave/Tavily/Serper with WEB_SEARCH_API_KEY, else DuckDuckGo)',
+  description:
+    'Search the live web for current facts, news, scores, prices, docs, and anything outside training data. Prefer this over guessing for "today", recent events, or unknown specifics. Then use fetch_url on the best result URL.',
   parameters: {
     type: 'object',
     properties: { query: { type: 'string' } },
@@ -151,7 +294,8 @@ registerTool({
 
 registerTool({
   name: 'fetch_url',
-  description: 'Fetch URL content with size/timeout limits',
+  description:
+    'Fetch a URL and return readable text (HTML stripped) or JSON. Use after web_search to read the best hit. Prefer over guessing page contents.',
   parameters: {
     type: 'object',
     properties: {
@@ -161,49 +305,9 @@ registerTool({
     required: ['url'],
   },
   async execute(args, ctx) {
-    const target = String(args.url)
-    let parsed: URL
-    try {
-      parsed = new URL(target)
-    } catch {
-      throw new ToolError(`Invalid URL: ${target}`)
-    }
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      throw new ToolError('Only http(s) URLs are allowed')
-    }
-
-    const maxBytes = Math.min(Number(args.maxBytes) || FETCH_MAX_BYTES, FETCH_MAX_BYTES)
-    const controller = new AbortController()
-    const onAbort = () => controller.abort()
-    ctx.signal.addEventListener('abort', onAbort, { once: true })
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-
-    try {
-      const res = await fetch(target, {
-        signal: controller.signal,
-        headers: { Accept: 'text/html,application/json,text/plain,*/*' },
-        redirect: 'follow',
-      })
-      const contentType = res.headers.get('content-type') ?? 'application/octet-stream'
-      const buf = new Uint8Array(await res.arrayBuffer())
-      const truncated = buf.byteLength > maxBytes
-      const slice = truncated ? buf.slice(0, maxBytes) : buf
-      const text = new TextDecoder('utf-8', { fatal: false }).decode(slice)
-      return {
-        status: res.status,
-        contentType,
-        bytes: buf.byteLength,
-        truncated,
-        content: text,
-      }
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        throw new ToolError('fetch_url timed out or aborted')
-      }
-      throw new ToolError(String(err))
-    } finally {
-      clearTimeout(timer)
-      ctx.signal.removeEventListener('abort', onAbort)
-    }
+    return fetchUrlContent(String(args.url), {
+      maxBytes: args.maxBytes as number | undefined,
+      signal: ctx.signal,
+    })
   },
 })

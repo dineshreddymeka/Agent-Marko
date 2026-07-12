@@ -94,12 +94,17 @@ export const sessionsRepo = {
   },
 
   async deleteArchivedOlderThan(cutoff: Date): Promise<number> {
+    const ids = await this.deleteArchivedOlderThanReturning(cutoff)
+    return ids.length
+  },
+
+  async deleteArchivedOlderThanReturning(cutoff: Date): Promise<string[]> {
     const db = getDb()
     const rows = await db
       .delete(sessions)
       .where(and(eq(sessions.archived, true), lt(sessions.updatedAt, cutoff)))
       .returning({ id: sessions.id })
-    return rows.length
+    return rows.map((row) => row.id)
   },
 
   async search(query: string, limit = 20): Promise<Session[]> {

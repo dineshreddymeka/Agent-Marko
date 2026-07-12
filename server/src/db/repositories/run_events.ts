@@ -134,11 +134,16 @@ export const runEventsRepo = {
   },
 
   async deleteOlderThan(cutoff: Date): Promise<number> {
+    const ids = await this.deleteOlderThanReturning(cutoff)
+    return ids.length
+  },
+
+  async deleteOlderThanReturning(cutoff: Date): Promise<string[]> {
     const db = getDb()
     const rows = await db
       .delete(runEvents)
       .where(lt(runEvents.createdAt, cutoff))
       .returning({ id: runEvents.id })
-    return rows.length
+    return rows.map((row) => row.id)
   },
 }

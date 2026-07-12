@@ -102,6 +102,16 @@ const envSchema = z.object({
   INDEXER_POLL_MS: z.coerce.number().int().min(1_000).max(300_000).default(15_000),
   /** Max workspace/office file bytes to fully index as text. */
   INDEXER_MAX_FILE_BYTES: z.coerce.number().int().min(1_024).max(10 * 1024 * 1024).default(512 * 1024),
+  /** Chunk size in characters for text splitting. */
+  INDEXER_CHUNK_CHARS: z.coerce.number().int().min(256).max(16_000).default(1800),
+  /** Overlap between consecutive chunks (characters). */
+  INDEXER_CHUNK_OVERLAP: z.coerce.number().int().min(0).max(4_000).default(200),
+  /** Max jobs claimed per drain tick (FOR UPDATE SKIP LOCKED). */
+  INDEXER_CLAIM_LIMIT: z.coerce.number().int().min(1).max(128).default(16),
+  /** Parallel job processors within a claim batch. */
+  INDEXER_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(4),
+  /** Comma-separated path segments/globs to ignore (in addition to built-ins). */
+  INDEXER_EXCLUDE_GLOBS: z.string().default(''),
   /** Default topK for automatic agent recall. */
   INDEXER_DEFAULT_TOP_K: z.coerce.number().int().min(1).max(50).default(8),
   /** Days before soft-deleted index docs / done jobs are pruned. */

@@ -15,7 +15,7 @@ let timer: ReturnType<typeof setInterval> | null = null
 let unsubscribeWake: (() => void) | null = null
 let unlistenNotify: (() => void | Promise<void>) | null = null
 
-export async function drainIndexJobs(limit = 16): Promise<number> {
+export async function drainIndexJobs(limit = config.INDEXER_CLAIM_LIMIT): Promise<number> {
   if (!config.INDEXER_ENABLED) return 0
   if (running) {
     drainRequested = true
@@ -23,39 +23,45 @@ export async function drainIndexJobs(limit = 16): Promise<number> {
   }
   running = true
   let processed = 0
+  const concurrency = Math.max(1, config.INDEXER_CONCURRENCY)
   try {
     do {
       drainRequested = false
       for (;;) {
         const jobs = await indexerRepo.claimJobs(limit)
         if (jobs.length === 0) break
-        for (const job of jobs) {
-          try {
-            await processIndexJob(job)
-            const completed = await indexerRepo.completeJob(job.id, job.lockToken)
-            processed++
-            if (completed.rerunRequested && completed.sourceId) {
-              await indexerRepo.enqueueJob({
-                sourceType: completed.sourceType,
-                sourceId: completed.sourceId,
-                operation: completed.operation,
-                actionId: job.actionId,
-                sessionId: job.sessionId,
-                runId: job.runId,
-                userId: job.userId,
-                metadata: job.metadata,
-                priority: 1,
-              })
-            }
-          } catch (err) {
-            await indexerRepo.failJob(job.id, job.lockToken, err)
-            log.warn('Index job failed', {
-              jobId: job.id,
-              sourceType: job.sourceType,
-              sourceId: job.sourceId,
-              error: String(err),
-            })
-          }
+        for (let i = 0; i < jobs.length; i += concurrency) {
+          const batch = jobs.slice(i, i + concurrency)
+          await Promise.all(
+            batch.map(async (job) => {
+              try {
+                await processIndexJob(job)
+                const completed = await indexerRepo.completeJob(job.id, job.lockToken)
+                processed++
+                if (completed.rerunRequested && completed.sourceId) {
+                  await indexerRepo.enqueueJob({
+                    sourceType: completed.sourceType,
+                    sourceId: completed.sourceId,
+                    operation: completed.operation,
+                    actionId: job.actionId,
+                    sessionId: job.sessionId,
+                    runId: job.runId,
+                    userId: job.userId,
+                    metadata: job.metadata,
+                    priority: 1,
+                  })
+                }
+              } catch (err) {
+                await indexerRepo.failJob(job.id, job.lockToken, err)
+                log.warn('Index job failed', {
+                  jobId: job.id,
+                  sourceType: job.sourceType,
+                  sourceId: job.sourceId,
+                  error: String(err),
+                })
+              }
+            }),
+          )
         }
       }
     } while (drainRequested)

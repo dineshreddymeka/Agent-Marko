@@ -12,6 +12,7 @@ export type PanelName =
   | 'office'
   | 'briefing'
   | 'cron'
+  | 'kanban'
   | 'profiles'
   | 'settings'
 

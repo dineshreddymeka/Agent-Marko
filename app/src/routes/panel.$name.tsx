@@ -7,6 +7,7 @@ import { MemoryPanel } from '@app/components/panels/MemoryPanel'
 import { ConnectionsPanel } from '@app/components/panels/ConnectionsPanel'
 import { OfficePanel } from '@app/components/panels/OfficePanel'
 import { CronPanel } from '@app/components/panels/CronPanel'
+import { KanbanPanel } from '@app/components/panels/KanbanPanel'
 import { ProfilesPanel } from '@app/components/panels/ProfilesPanel'
 import { SettingsPanel } from '@app/components/panels/SettingsPanel'
 import { panelLabel, resolvePanelRoute } from '@app/lib/labels'
@@ -20,6 +21,7 @@ const panelComponents: Record<PanelName, ComponentType> = {
   office: OfficePanel,
   briefing: OfficePanel,
   cron: CronPanel,
+  kanban: KanbanPanel,
   profiles: ProfilesPanel,
   settings: SettingsPanel,
 }

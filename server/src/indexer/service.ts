@@ -114,7 +114,10 @@ async function upsertTextDocument(input: {
     return
   }
 
-  const textChunks = chunkText(input.text)
+  const textChunks = chunkText(input.text, {
+    maxChars: config.INDEXER_CHUNK_CHARS,
+    overlapChars: config.INDEXER_CHUNK_OVERLAP,
+  })
   let embeddings: Array<number[] | null> = textChunks.map(() => null)
   let embeddingPending = false
   try {
@@ -255,11 +258,33 @@ export async function queueRuntimeRecord(
 export async function queueRuntimeDelete(
   sourceType: Exclude<IndexSourceType, 'workspace_file'>,
   sourceId: string,
+  opts?: {
+    sessionId?: string | null
+    runId?: string | null
+    userId?: string | null
+    parentActionId?: string | null
+  },
 ): Promise<void> {
+  const actionId = randomUUID()
+  await indexerRepo.recordAction({
+    actionId,
+    sessionId: opts?.sessionId ?? null,
+    runId: opts?.runId ?? null,
+    userId: opts?.userId ?? null,
+    parentActionId: opts?.parentActionId ?? null,
+    sourceType,
+    sourceId,
+    actionType: `${sourceType}_deleted`,
+    summary: `${sourceType} deleted`,
+  })
   await indexerRepo.enqueueJob({
     sourceType,
     sourceId,
     operation: 'delete',
+    actionId,
+    sessionId: opts?.sessionId ?? null,
+    runId: opts?.runId ?? null,
+    userId: opts?.userId ?? null,
     priority: 5,
   })
 }
