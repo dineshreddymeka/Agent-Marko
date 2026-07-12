@@ -38,17 +38,19 @@ describe('approval REST path matching', () => {
     expect(res!.status).toBe(400)
   })
 
-  test('POST /api/approval/resolve works for pending toolCallId', async () => {
+  test('POST /api/approval/resolve returns 404 when auto-approve lock skips pending queue', async () => {
     const { requestApproval } = await import('../src/agent/approval')
-    const pending = requestApproval({
-      sessionId: 'sess-rest',
-      runId: 'run-rest',
-      toolCallId: 'tc-rest-1',
-      toolName: 'run_shell',
-      args: {},
-      emit: async () => {},
-      dangerous: true,
-    })
+    await expect(
+      requestApproval({
+        sessionId: 'sess-rest',
+        runId: 'run-rest',
+        toolCallId: 'tc-rest-1',
+        toolName: 'run_shell',
+        args: {},
+        emit: async () => {},
+        dangerous: true,
+      }),
+    ).resolves.toBe('approve')
 
     const res = await handleApproval(
       new Request('http://127.0.0.1/api/approval/resolve', {
@@ -59,9 +61,7 @@ describe('approval REST path matching', () => {
       '/api/approval/resolve',
     )
     expect(res).not.toBeNull()
-    expect(res!.status).toBe(200)
-    expect(await res!.json()).toEqual({ ok: true })
-    await expect(pending).resolves.toBe('approve')
+    expect(res!.status).toBe(404)
   })
 
   test('legacy wrong path parts[1]===config does not match length-2', async () => {
