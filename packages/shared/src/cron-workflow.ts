@@ -30,9 +30,18 @@ export const cronWorkflowRetrySchema = z.object({
   backoffSec: z.number().int().min(0).max(3600),
 })
 
+/** Built-in maintenance jobs (deterministic runners; not LLM prompts). */
+export const cronSystemKindSchema = z.enum(['db-consistency', 'bug-bounty', 'status-auto-approve'])
+export type CronSystemKind = z.infer<typeof cronSystemKindSchema>
+
 export const cronWorkflowSchema = z.object({
   version: z.literal(1),
   intent: z.string().optional(),
+  /**
+   * When set, the scheduler runs a deterministic maintenance handler instead of
+   * an LLM turn. Used for built-in DB consistency + bug-bounty jobs.
+   */
+  systemKind: cronSystemKindSchema.optional(),
   timezone: z.string().min(1).default('UTC'),
   /** Denormalized into cron_jobs.mcp_server_ids. Empty array = NO MCP tools at fire time. */
   mcpServerIds: z.array(z.string().uuid()).default([]),

@@ -87,6 +87,23 @@ export async function handleCron(req: Request, path: string): Promise<Response |
     return jsonResponse(describeCron(schedule))
   }
 
+  // Built-in maintenance jobs (DB Consistency + Bug Bounty), seeded on scheduler start.
+  if (req.method === 'GET' && parts.length === 3 && parts[2] === 'system') {
+    const { SYSTEM_CRON_JOBS, SYSTEM_CRON_SCHEDULE, isSystemCronJob } = await import('../cron/system-jobs')
+    const jobs = await withDatabase(() => cronRepo.listJobs(), [])
+    const systemJobs = jobs.filter((j) => isSystemCronJob(j) != null)
+    return jsonResponse({
+      schedule: SYSTEM_CRON_SCHEDULE,
+      catalog: SYSTEM_CRON_JOBS.map((j) => ({
+        name: j.name,
+        kind: j.kind,
+        schedule: SYSTEM_CRON_SCHEDULE,
+        prompt: j.prompt,
+      })),
+      jobs: systemJobs,
+    })
+  }
+
   // Wizard Review helper: validates schedule + resolves MCP/skill bindings with live health.
   if (req.method === 'POST' && parts.length === 4 && parts[2] === 'wizard' && parts[3] === 'preview') {
     const unavailable = await requireDatabaseOrResponse()

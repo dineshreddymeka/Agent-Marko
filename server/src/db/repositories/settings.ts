@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { getDb } from '../client'
 import { nowTimestamp } from '../insert-contract'
 import { settings } from '../schema'
@@ -19,11 +19,13 @@ export const settingsRepo = {
   async set(key: string, value: unknown, opts?: { sessionId?: string | null }): Promise<void> {
     const db = getDb()
     const now = nowTimestamp()
+    // Cast via text → jsonb so primitives (boolean/number/string) bind correctly under Bun.sql.
+    const jsonValue = sql`${JSON.stringify(value)}::jsonb`
     await db
       .insert(settings)
       .values({
         key,
-        value,
+        value: jsonValue,
         sessionId: opts?.sessionId ?? null,
         createdAt: now,
         updatedAt: now,
@@ -31,7 +33,7 @@ export const settingsRepo = {
       .onConflictDoUpdate({
         target: settings.key,
         set: {
-          value,
+          value: jsonValue,
           updatedAt: now,
           ...(opts?.sessionId !== undefined ? { sessionId: opts.sessionId } : {}),
         },

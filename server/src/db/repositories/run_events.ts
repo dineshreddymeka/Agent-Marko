@@ -130,11 +130,15 @@ export const runEventsRepo = {
   /** Delete `run_events` older than `days` (based on `created_at`). Returns deleted row count. */
   async pruneOlderThan(days: number): Promise<number> {
     const cutoff = retentionCutoff(days)
+    return this.deleteOlderThan(cutoff)
+  },
+
+  async deleteOlderThan(cutoff: Date): Promise<number> {
     const db = getDb()
-    const deleted = await db
+    const rows = await db
       .delete(runEvents)
       .where(lt(runEvents.createdAt, cutoff))
       .returning({ id: runEvents.id })
-    return deleted.length
+    return rows.length
   },
 }

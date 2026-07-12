@@ -39,3 +39,21 @@ export function listBufferedRuns(limit = 20): Array<{ runId: string; sessionId: 
 export function getBufferedRunEvents(runId: string): BufferedRunEvent[] {
   return buffer.get(runId) ?? []
 }
+
+export function bufferedRunCount(): number {
+  return buffer.size
+}
+
+/** Drop buffered runs whose most recent event is older than maxAgeMs. Returns the number removed. */
+export function pruneBufferedRuns(maxAgeMs: number): number {
+  const cutoff = Date.now() - maxAgeMs
+  let removed = 0
+  for (const [runId, events] of buffer) {
+    const last = events.at(-1)?.createdAt
+    if (last && new Date(last).getTime() < cutoff) {
+      buffer.delete(runId)
+      removed++
+    }
+  }
+  return removed
+}
