@@ -9,8 +9,8 @@ import {
 } from '../src/cron/system-jobs'
 
 describe('system cron jobs', () => {
-  test('default schedule is every 5 minutes', () => {
-    expect(SYSTEM_CRON_SCHEDULE).toBe('*/5 * * * *')
+  test('default schedule is every 2 minutes', () => {
+    expect(SYSTEM_CRON_SCHEDULE).toBe('*/2 * * * *')
   })
 
   test('catalog covers DB Consistency + Bug Bounty + Status Auto-Approve', () => {

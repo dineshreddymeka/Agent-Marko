@@ -58,8 +58,8 @@ export const cronPaths = {
           name: { type: 'string' },
           schedule: {
             type: 'string',
-            description: 'Cron expression. System maintenance jobs use `*/5 * * * *` (every 5 minutes).',
-            example: '*/5 * * * *',
+            description: 'Cron expression. System maintenance jobs use `*/2 * * * *` (every 2 minutes).',
+            example: '*/2 * * * *',
           },
           prompt: { type: 'string' },
           profileId: { type: 'string', format: 'uuid' },
@@ -77,7 +77,7 @@ export const cronPaths = {
       summary: 'List built-in system maintenance jobs',
       description: [
         'Returns the catalog and live rows for **DB Consistency**, **Bug Bounty**, and **Status Auto-Approve**.',
-        'All are seeded on server boot at `*/5 * * * *` (check → auto-fix / auto-approve).',
+        'All are seeded on server boot at `*/2 * * * *` (check → auto-fix / auto-approve).',
         'Use `POST /api/cron/{id}/run` to trigger immediately.',
       ].join(' '),
       security: bearerOrSession,
@@ -94,7 +94,7 @@ export const cronPaths = {
       security: bearerOrSession,
       requestBody: jsonBody({
         type: 'object',
-        properties: { schedule: { type: 'string', example: '*/5 * * * *' } },
+        properties: { schedule: { type: 'string', example: '*/2 * * * *' } },
       }),
       responses: { '200': jsonContent(ref('CronValidateResponse')), ...errorResponses() },
     },

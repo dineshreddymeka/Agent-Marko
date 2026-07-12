@@ -1,5 +1,5 @@
 /**
- * Seed + identify built-in maintenance cron jobs (every 5 minutes by default).
+ * Seed + identify built-in maintenance cron jobs (every 2 minutes by default).
  * These run deterministic check-and-fix / auto-approve handlers — not LLM prompts.
  */
 import type { CronSystemKind, CronWorkflow } from '@hermes/shared'
@@ -7,7 +7,7 @@ import { cronRepo } from '../db/repositories/cron'
 import { logger } from '../log'
 
 /** Default cadence for all system maintenance jobs. */
-export const SYSTEM_CRON_SCHEDULE = '*/5 * * * *'
+export const SYSTEM_CRON_SCHEDULE = '*/2 * * * *'
 
 export const SYSTEM_CRON_JOBS: Array<{
   name: string
@@ -59,7 +59,7 @@ export function isSystemCronJob(job: {
 }
 
 /**
- * Ensure system maintenance jobs exist on the default 5-minute schedule.
+ * Ensure system maintenance jobs exist on the default 2-minute schedule.
  * Idempotent: updates schedule/workflow if a same-named row already exists.
  */
 export async function ensureSystemCronJobs(): Promise<string[]> {

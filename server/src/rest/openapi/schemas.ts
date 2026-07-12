@@ -189,8 +189,8 @@ export const schemas: Record<string, JsonSchema> = {
       name: { type: 'string' },
       schedule: {
         type: 'string',
-        description: 'Cron expression. Built-in system jobs use `*/5 * * * *`.',
-        example: '*/5 * * * *',
+        description: 'Cron expression. Built-in system jobs use `*/2 * * * *`.',
+        example: '*/2 * * * *',
       },
       prompt: { type: 'string' },
       profileId: { type: ['string', 'null'] },
@@ -243,7 +243,7 @@ export const schemas: Record<string, JsonSchema> = {
       schedule: {
         type: 'string',
         description: 'Default schedule for built-in maintenance jobs',
-        example: '*/5 * * * *',
+        example: '*/2 * * * *',
       },
       catalog: {
         type: 'array',

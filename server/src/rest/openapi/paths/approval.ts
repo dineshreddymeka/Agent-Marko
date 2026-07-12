@@ -6,7 +6,7 @@ export const approvalPaths = {
       tags: ['Approval'],
       summary: 'Get tool approval config',
       description:
-        'Auto-approve is locked ON (never off). Status Auto-Approve cron re-asserts every 5 minutes.',
+        'Auto-approve is locked ON (never off). Status Auto-Approve cron re-asserts every 2 minutes.',
       security: bearerOrSession,
       responses: { '200': jsonContent(ref('ApprovalConfig')), ...errorResponses() },
     },
@@ -23,7 +23,7 @@ export const approvalPaths = {
       tags: ['Approval'],
       summary: 'List pending HITL tool approvals',
       description:
-        'In-memory approvals waiting for resolve. The Status Auto-Approve cron (`*/5 * * * *`) auto-approves these.',
+        'In-memory approvals waiting for resolve. The Status Auto-Approve cron (`*/2 * * * *`) auto-approves these.',
       security: bearerOrSession,
       responses: {
         '200': jsonContent({
@@ -53,7 +53,7 @@ export const approvalPaths = {
     post: {
       tags: ['Approval'],
       summary: 'Enable autoApproveAll and approve all pending now',
-      description: 'Same action the Status Auto-Approve system cron performs every 5 minutes.',
+      description: 'Same action the Status Auto-Approve system cron performs every 2 minutes.',
       security: bearerOrSession,
       responses: {
         '200': jsonContent({

@@ -3,7 +3,7 @@
   "info": {
     "title": "Open Jarvis API",
     "version": "0.1.0",
-    "description": "REST + AG-UI HTTP contract for Open Jarvis (Hermes UI).\n\n**Auth:** Prefer the better-auth session cookie, or `Authorization: Bearer hrm_*` API tokens.\nWhen `HOST=127.0.0.1` and `ALLOW_SIGNUP=false`, localhost requests bypass auth (dev-only).\n\n**Database:** Resource schemas include `x-db-table` pointing at Drizzle tables in `server/src/db/schema.ts`.\nSee `docs/DATABASE-DESIGN.md` for the ERD/narrative companion.\n\n**System maintenance cron:** On boot the scheduler seeds **DB Consistency**, **Bug Bounty**, and **Status Auto-Approve** every 5 minutes. They check then auto-fix / auto-approve pending issues; results land in `cron_runs.detail.maintenance`. See `GET /api/cron/system`.\n\nInteractive docs: `/api/docs` · Machine-readable: `/api/openapi.json`."
+    "description": "REST + AG-UI HTTP contract for Open Jarvis (Hermes UI).\n\n**Auth:** Prefer the better-auth session cookie, or `Authorization: Bearer hrm_*` API tokens.\nWhen `HOST=127.0.0.1` and `ALLOW_SIGNUP=false`, localhost requests bypass auth (dev-only).\n\n**Database:** Resource schemas include `x-db-table` pointing at Drizzle tables in `server/src/db/schema.ts`.\nSee `docs/DATABASE-DESIGN.md` for the ERD/narrative companion.\n\n**System maintenance cron:** On boot the scheduler seeds **DB Consistency**, **Bug Bounty**, and **Status Auto-Approve** every 2 minutes. They check then auto-fix / auto-approve pending issues; results land in `cron_runs.detail.maintenance`. See `GET /api/cron/system`.\n\nInteractive docs: `/api/docs` · Machine-readable: `/api/openapi.json`."
   },
   "servers": [
     {
@@ -30,7 +30,7 @@
     },
     {
       "name": "Cron",
-      "description": "Scheduled tasks. Built-in **DB Consistency**, **Bug Bounty**, and **Status Auto-Approve** jobs seed on boot at `*/5 * * * *` (check → auto-fix / auto-approve) (`GET /api/cron/system`)."
+      "description": "Scheduled tasks. Built-in **DB Consistency**, **Bug Bounty**, and **Status Auto-Approve** jobs seed on boot at `*/2 * * * *` (check → auto-fix / auto-approve) (`GET /api/cron/system`)."
     },
     {
       "name": "Cowork",
@@ -1988,8 +1988,8 @@
                   },
                   "schedule": {
                     "type": "string",
-                    "description": "Cron expression. System maintenance jobs use `*/5 * * * *` (every 5 minutes).",
-                    "example": "*/5 * * * *"
+                    "description": "Cron expression. System maintenance jobs use `*/2 * * * *` (every 2 minutes).",
+                    "example": "*/2 * * * *"
                   },
                   "prompt": {
                     "type": "string"
@@ -2139,7 +2139,7 @@
           "Cron"
         ],
         "summary": "List built-in system maintenance jobs",
-        "description": "Returns the catalog and live rows for **DB Consistency**, **Bug Bounty**, and **Status Auto-Approve**. All are seeded on server boot at `*/5 * * * *` (check → auto-fix / auto-approve). Use `POST /api/cron/{id}/run` to trigger immediately.",
+        "description": "Returns the catalog and live rows for **DB Consistency**, **Bug Bounty**, and **Status Auto-Approve**. All are seeded on server boot at `*/2 * * * *` (check → auto-fix / auto-approve). Use `POST /api/cron/{id}/run` to trigger immediately.",
         "security": [
           {
             "SessionCookie": []
@@ -2215,7 +2215,7 @@
                 "properties": {
                   "schedule": {
                     "type": "string",
-                    "example": "*/5 * * * *"
+                    "example": "*/2 * * * *"
                   }
                 }
               }
@@ -6153,7 +6153,7 @@
           "Approval"
         ],
         "summary": "Get tool approval config",
-        "description": "Auto-approve is locked ON (never off). Status Auto-Approve cron re-asserts every 5 minutes.",
+        "description": "Auto-approve is locked ON (never off). Status Auto-Approve cron re-asserts every 2 minutes.",
         "security": [
           {
             "SessionCookie": []
@@ -6278,7 +6278,7 @@
           "Approval"
         ],
         "summary": "List pending HITL tool approvals",
-        "description": "In-memory approvals waiting for resolve. The Status Auto-Approve cron (`*/5 * * * *`) auto-approves these.",
+        "description": "In-memory approvals waiting for resolve. The Status Auto-Approve cron (`*/2 * * * *`) auto-approves these.",
         "security": [
           {
             "SessionCookie": []
@@ -6368,7 +6368,7 @@
           "Approval"
         ],
         "summary": "Enable autoApproveAll and approve all pending now",
-        "description": "Same action the Status Auto-Approve system cron performs every 5 minutes.",
+        "description": "Same action the Status Auto-Approve system cron performs every 2 minutes.",
         "security": [
           {
             "SessionCookie": []
@@ -7270,8 +7270,8 @@
           },
           "schedule": {
             "type": "string",
-            "description": "Cron expression. Built-in system jobs use `*/5 * * * *`.",
-            "example": "*/5 * * * *"
+            "description": "Cron expression. Built-in system jobs use `*/2 * * * *`.",
+            "example": "*/2 * * * *"
           },
           "prompt": {
             "type": "string"
@@ -7440,7 +7440,7 @@
           "schedule": {
             "type": "string",
             "description": "Default schedule for built-in maintenance jobs",
-            "example": "*/5 * * * *"
+            "example": "*/2 * * * *"
           },
           "catalog": {
             "type": "array",

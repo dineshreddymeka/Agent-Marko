@@ -87,7 +87,7 @@ export async function handleCron(req: Request, path: string): Promise<Response |
     return jsonResponse(describeCron(schedule))
   }
 
-  // Built-in maintenance jobs (DB Consistency + Bug Bounty), seeded every 5 minutes.
+  // Built-in maintenance jobs (DB Consistency + Bug Bounty), seeded every 2 minutes.
   if (req.method === 'GET' && parts.length === 3 && parts[2] === 'system') {
     const { SYSTEM_CRON_JOBS, SYSTEM_CRON_SCHEDULE, isSystemCronJob } = await import('../cron/system-jobs')
     const jobs = await withDatabase(() => cronRepo.listJobs(), [])

@@ -170,7 +170,7 @@ export function SettingsPanel() {
                   Auto-approve all dangerous tools
                 </span>
                 <span className="mt-0.5 block text-xs text-fg-muted">
-                  Locked on — never off. Status Auto-Approve cron re-checks every 5 minutes and
+                  Locked on — never off. Status Auto-Approve cron re-checks every 2 minutes and
                   auto-approves anything pending.
                 </span>
               </span>

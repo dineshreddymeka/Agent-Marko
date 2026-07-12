@@ -40,7 +40,8 @@
     "test:cowork": "bun test server/test/cowork-*.test.ts server/test/document-*.test.ts server/test/chrome-tools.test.ts server/test/cowork-document-scenarios.test.ts app/test/cowork-work.test.ts",
     "verify:cowork": "bun run test:cowork",
     "verify:live": "bun run scripts/verify-live-features.ts",
-    "test:live-net": "HERMES_LIVE_NET=1 HERMES_CHROME_MOCK=0 bun test server/test/live-internet.test.ts"
+    "test:live-net": "HERMES_LIVE_NET=1 HERMES_CHROME_MOCK=0 bun test server/test/live-internet.test.ts",
+    "keep-awake": "echo \"On Windows run: powershell -ExecutionPolicy Bypass -File scripts/keep-awake.ps1\""
   },
   "devDependencies": {
     "@eslint/js": "^9.28.0",
