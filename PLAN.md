@@ -80,10 +80,13 @@ Rebuild the agent WebUI as **Open Jarvis** from the Hermes WebUI concept (vanill
 - [ ] Document SSO setup (`bun run office:sso-setup`) in README
 
 #### Phase 9 — Open Cowork integration · **Pending** · auto-approve
-- [ ] Restore/finish `server/src/rest/cowork.ts` + `CoworkWorkRequests` UI
-- [ ] `delegate_to_cowork` tool + `hermes.cowork.progress` streaming
-- [ ] Setup preflight (`OPEN_COWORK_EXE`, workspace path) + MCP bridge register
-- [ ] Cowork tasks use auto-approve (`OPEN_COWORK_AUTO_APPROVE=true`)
+- [x] Restore Cowork REST / client / MCP bridge / UI helpers + unit scenarios
+- [x] Real-world document scenarios (PPT form, markdown draft, Chrome research → draft, PDF/Word package, mock Cowork run)
+- [x] Chrome + MCP mock servers for research/document workflows
+- [ ] Live Open Cowork.exe E2E on Windows (`OPEN_COWORK_EXE`)
+- [ ] `delegate_to_cowork` live progress in chat UI polish
+- [ ] Setup preflight panel wiring for missing exe
+- [ ] Cowork tasks use auto-approve (`OPEN_COWORK_AUTO_APPROVE=true`) — locked with global policy
 
 #### Phase 10 — Jarvis indexer / recall · **Pending** · auto-approve
 - [ ] Restore/finish `server/src/rest/indexer.ts` + `index_search` agent tool
