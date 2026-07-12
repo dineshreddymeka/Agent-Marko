@@ -4,6 +4,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { routeTree } from '@app/routeTree.gen'
 import { applyTheme } from '@app/stores/ui'
+import {
+  persistQueryClientState,
+  restoreQueryClientState,
+  shouldPersistQueryKey,
+} from '@app/lib/query-persist'
 import '@app/styles/index.css'
 
 applyTheme('dark')
@@ -13,6 +18,7 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: 30_000,
       retry: 1,
+      gcTime: 1000 * 60 * 60 * 24,
     },
   },
 })
@@ -25,10 +31,49 @@ declare module '@tanstack/react-router' {
   }
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
-  </StrictMode>,
-)
+async function bootstrap() {
+  try {
+    const cached = await restoreQueryClientState()
+    if (cached && typeof cached === 'object' && cached !== null && 'queries' in cached) {
+      const state = cached as {
+        queries?: Array<{ queryKey: unknown[]; state: { data: unknown } }>
+      }
+      for (const q of state.queries ?? []) {
+        if (!shouldPersistQueryKey(q.queryKey as readonly unknown[])) continue
+        if (q.state?.data !== undefined) {
+          queryClient.setQueryData(q.queryKey, q.state.data)
+        }
+      }
+    }
+  } catch {
+    // IndexedDB unavailable (SSR/tests) — continue without cache
+  }
+
+  let persistTimer: ReturnType<typeof setTimeout> | null = null
+  queryClient.getQueryCache().subscribe(() => {
+    if (persistTimer) clearTimeout(persistTimer)
+    persistTimer = setTimeout(() => {
+      const snapshot = {
+        queries: queryClient
+          .getQueryCache()
+          .getAll()
+          .filter((q) => shouldPersistQueryKey(q.queryKey))
+          .map((q) => ({
+            queryKey: q.queryKey,
+            state: { data: q.state.data },
+          })),
+      }
+      void persistQueryClientState(snapshot)
+    }, 1000)
+  })
+
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </StrictMode>,
+  )
+}
+
+void bootstrap()

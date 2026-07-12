@@ -86,14 +86,23 @@ async function main() {
     process.exit(1)
   }
 
-  console.log('Step 1/5: docker compose up -d (Postgres 17 + pgvector)')
-  if ((await run([docker, 'compose', 'up', '-d'])) !== 0) process.exit(1)
+  console.log('Step 1/5: docker compose up -d (Postgres 17 + pgvector 0.8.5-pg17)')
+  if ((await run([docker, 'compose', 'up', '-d'])) !== 0) {
+    console.error(
+      'compose up failed. If upgrading from PG17, backup then recreate the data dir — see docs/adr/002-postgres-pgvector.md',
+    )
+    process.exit(1)
+  }
 
   console.log('Step 2/5: wait for Postgres')
   await waitForPostgres(docker)
 
   console.log('Step 3/5: migrate')
-  if ((await run([bun, 'run', 'migrate'])) !== 0) process.exit(1)
+  const migrateEnv = {
+    DATABASE_URL:
+      process.env.DATABASE_URL ?? 'postgres://hermes:hermes@localhost:5433/hermes',
+  }
+  if ((await run([bun, 'run', 'migrate'], { env: migrateEnv })) !== 0) process.exit(1)
 
   if (withIntegration) {
     console.log('Step 4/5: integration tests (HERMES_INTEGRATION_TEST=1)')

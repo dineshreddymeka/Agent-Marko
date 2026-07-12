@@ -5,23 +5,43 @@ import { profilesRepo } from '../db/repositories/profiles'
 import { sessionsRepo } from '../db/repositories/sessions'
 import { memoryRepo } from '../db/repositories/memory'
 import { skillsRepo } from '../db/repositories/skills'
+import { messagesRepo } from '../db/repositories/messages'
 import { embedText } from '../vector/embeddings'
 import { config } from '../config'
+import { getCronBindings } from '../cron/run-bindings'
+import { looksLikeCronIntent } from './tools/a2ui'
+import {
+  looksLikeDocumentIntent,
+  prefersCoworkDocument,
+} from './document-intent'
+import { looksLikeFormIntent } from './form-intent'
+
+/** Soften legacy profile prompts that still say Hermes. */
+function normalizeBrandPrompt(prompt: string): string {
+  return prompt
+    .replace(/\bI'm Hermes\b/gi, "I'm Open Jarvis")
+    .replace(/\bI am Hermes\b/gi, 'I am Open Jarvis')
+    .replace(/\bYou are Hermes\b/gi, 'You are Open Jarvis')
+    .replace(/\bHermes assistant\b/gi, 'Open Jarvis assistant')
+}
+import { formatRecallSnippet, searchRecallIndex } from '../indexer/retriever'
 
 export type BuiltContext = {
   systemPrompt: string
   profile: Profile
   memorySnippets: string[]
   skillSnippets: string[]
+  transcriptSnippets: string[]
+  recallSnippets: string[]
+  tokensUsed: number
+  budget: number
 }
-
-const TOKEN_BUDGET = config.CONTEXT_INJECTION_BUDGET
 
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4)
 }
 
-function trimToBudget(items: string[], budget: number): string[] {
+function trimToBudget(items: string[], budget: number): { kept: string[]; used: number } {
   const result: string[] = []
   let used = 0
   for (const item of items) {
@@ -30,7 +50,7 @@ function trimToBudget(items: string[], budget: number): string[] {
     result.push(item)
     used += cost
   }
-  return result
+  return { kept: result, used }
 }
 
 const MOCK_PROFILE: Profile = {
@@ -45,12 +65,18 @@ const MOCK_PROFILE: Profile = {
 }
 
 export async function buildAgentContext(input: RunAgentInput): Promise<BuiltContext> {
+  const budget = config.CONTEXT_INJECTION_BUDGET
+
   if (isMockLlmEnabled()) {
     return {
       systemPrompt: MOCK_PROFILE.systemPrompt,
       profile: MOCK_PROFILE,
       memorySnippets: [],
       skillSnippets: [],
+      transcriptSnippets: [],
+      recallSnippets: [],
+      tokensUsed: estimateTokens(MOCK_PROFILE.systemPrompt),
+      budget,
     }
   }
 
@@ -67,10 +93,18 @@ export async function buildAgentContext(input: RunAgentInput): Promise<BuiltCont
   }
 
   const lastUser = [...input.messages].reverse().find((m) => m.role === 'user')
-  const query = lastUser && 'content' in lastUser ? lastUser.content : ''
+  const query = lastUser && 'content' in lastUser ? String(lastUser.content ?? '') : ''
 
   let memorySnippets: string[] = []
   let skillSnippets: string[] = []
+  let transcriptSnippets: string[] = []
+  let recallSnippets: string[] = []
+
+  // Split injection budget: memory / skills / indexed recall / recent transcript.
+  const memBudget = Math.floor(budget / 4)
+  const skillBudget = Math.floor(budget / 4)
+  const recallBudget = Math.floor(budget / 4)
+  const transcriptBudget = budget - memBudget - skillBudget - recallBudget
 
   if (query) {
     try {
@@ -79,28 +113,185 @@ export async function buildAgentContext(input: RunAgentInput): Promise<BuiltCont
       memorySnippets = memories.map((m) => `[${m.kind}] ${m.content}`)
       const skills = await skillsRepo.vectorSearch(embedding, 3)
       skillSnippets = skills.map((s) => `# Skill: ${s.name}\n${s.bodyMd}`)
+      try {
+        const msgs = await messagesRepo.ftsSearch(query, 5)
+        transcriptSnippets = msgs.map((m) => `[${m.role}] ${m.content.slice(0, 500)}`)
+      } catch {
+        // transcript recall optional
+      }
     } catch {
       const skills = await skillsRepo.search(query, 3)
       skillSnippets = skills.map((s) => `# Skill: ${s.name}\n${s.bodyMd}`)
     }
+
+    try {
+      const topK = config.INDEXER_DEFAULT_TOP_K
+      const [current, byRun, broad] = await Promise.all([
+        searchRecallIndex({ query, topK: Math.min(3, topK), sessionId: input.threadId }),
+        searchRecallIndex({
+          query,
+          topK: Math.min(3, topK),
+          sessionId: input.threadId,
+          runId: input.runId,
+        }),
+        searchRecallIndex({ query, topK: Math.min(5, topK) }),
+      ])
+      const seen = new Set<string>()
+      recallSnippets = [...byRun, ...current, ...broad]
+        .filter((item) => {
+          const key = `${item.documentId}:${item.chunkId}`
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
+        .map(formatRecallSnippet)
+    } catch {
+      // indexed recall is optional
+    }
   }
 
-  memorySnippets = trimToBudget(memorySnippets, TOKEN_BUDGET / 3)
-  skillSnippets = trimToBudget(skillSnippets, TOKEN_BUDGET / 3)
+  // Recent transcript window (FTS / recency) under remaining budget
+  try {
+    const recent = await messagesRepo.listBySession?.(input.threadId, 8)
+    if (Array.isArray(recent)) {
+      transcriptSnippets = recent
+        .filter((m: { role: string }) => m.role === 'user' || m.role === 'assistant')
+        .map((m: { role: string; content: string }) => `[${m.role}] ${m.content.slice(0, 400)}`)
+    } else if (query) {
+      const fts = await messagesRepo.ftsSearch(query, 5)
+      transcriptSnippets = fts.map((m) => `[${m.role}] ${m.content.slice(0, 400)}`)
+    }
+  } catch {
+    // ignore transcript injection failures
+  }
 
-  const parts = [profile.systemPrompt]
+  const mem = trimToBudget(memorySnippets, memBudget)
+  const sk = trimToBudget(skillSnippets, skillBudget)
+  const rc = trimToBudget(recallSnippets, recallBudget)
+  const tr = trimToBudget(transcriptSnippets, transcriptBudget)
+  memorySnippets = mem.kept
+  skillSnippets = sk.kept
+  recallSnippets = rc.kept
+  transcriptSnippets = tr.kept
+
+  // Cron workflow bindings: forced skills are always injected (loaded by id,
+  // outside the similarity budget) so scheduled runs honor their configuration.
+  const bindings = getCronBindings()
+  let forcedSkillSnippets: string[] = []
+  if (bindings?.skillIds.length) {
+    const forced = await Promise.all(
+      bindings.skillIds.map((id) => skillsRepo.getById(id).catch(() => null)),
+    )
+    forcedSkillSnippets = forced
+      .filter((s): s is NonNullable<typeof s> => s != null)
+      .map((s) => `# Skill: ${s.name}\n${s.bodyMd}`)
+    const forcedNames = new Set(forcedSkillSnippets)
+    skillSnippets = skillSnippets.filter((s) => !forcedNames.has(s))
+  }
+
+  const parts = [normalizeBrandPrompt(profile.systemPrompt)]
+  // Soften empty acknowledgments on every turn (small models otherwise reply
+  // "What would you like help with?" after a fully specified request).
+  parts.push(
+    [
+      '## Behavior',
+      'You are Open Jarvis (not Hermes). Introduce yourself as Open Jarvis when asked.',
+      'When the user gives a concrete task, do it or use tools immediately.',
+      'Do not ask what they want if they already said it.',
+      'Never reply only with vague acknowledgments like "Understood. What would you like help with?" when the request is already specified.',
+      'Never narrate internal planning in the reply (no "Preparing to respond", "Drafting a greeting", etc.). Reply with the user-facing answer only.',
+    ].join('\n'),
+  )
+  // Only inject cron steering when the user is actually asking about scheduling.
+  // Always-on "## Cron jobs" caused small models to interrogate greetings like "hi".
+  if (looksLikeCronIntent(query)) {
+    parts.push(
+      [
+        '## Scheduled tasks (this turn only)',
+        'User is asking about cron/scheduled tasks.',
+        'Missing/ambiguous details → MUST call cron_form_show (never plain-text Q&A about schedule/timezone/action).',
+        'Fully specified name + schedule + prompt → call cron_create directly.',
+        'Do not ask for job name/schedule/timezone/action in chat text.',
+      ].join('\n'),
+    )
+  }
+  if (looksLikeFormIntent(query)) {
+    parts.push(
+      [
+        '## Forms (this turn only)',
+        'User wants a generic interactive form (not a document/PPT, not a cron job).',
+        'Missing purpose/fields/submit/storage → MUST call form_request_show.',
+        'Never greet again. Never ask "what can I help you with".',
+        'Do not treat this as a document or powerpoint request.',
+      ].join('\n'),
+    )
+  }
+  if (looksLikeDocumentIntent(query)) {
+    const coworkHint = prefersCoworkDocument(query)
+      ? 'User asked for PDF/Word/PPT/Office → if details incomplete MUST call document_form_show; if fully specified call delegate_to_cowork (do not only chat).'
+      : 'Prefer write_file into the workspace (e.g. drafts/<topic>-draft.md) when topic is clear; if topic/type unclear MUST call document_form_show.'
+    parts.push(
+      [
+        '## Documents / drafts (this turn only)',
+        'User wants a document, draft, work file, PPT, or office deliverable.',
+        'Missing topic, deliverable type, audience, length, or style → MUST call document_form_show (never plain-text Q&A about Topic/Audience/Length/Style).',
+        coworkHint,
+        'Put substantive draft content in the reply or the saved file when acting.',
+        'Do not invent a topic from filler like "for me".',
+      ].join('\n'),
+    )
+  }
+  if (forcedSkillSnippets.length) {
+    parts.push('## Required skills\n' + forcedSkillSnippets.join('\n\n'))
+  }
   if (memorySnippets.length) {
     parts.push('## Relevant memory\n' + memorySnippets.join('\n\n'))
   }
   if (skillSnippets.length) {
     parts.push('## Matched skills\n' + skillSnippets.join('\n\n'))
   }
+  if (recallSnippets.length) {
+    parts.push('## Previous context recall\n' + recallSnippets.join('\n\n'))
+  }
+  if (transcriptSnippets.length) {
+    parts.push('## Related transcript\n' + transcriptSnippets.join('\n\n'))
+  }
+
+  try {
+    const { getResourceMetas, readMcpResource } = await import('../mcp/manager')
+    const resources = getResourceMetas().slice(0, 5)
+    const resourceSnippets: string[] = []
+    let resourceBudget = Math.floor(budget / 6)
+    for (const r of resources) {
+      try {
+        const text = await readMcpResource(r.serverId, r.uri)
+        const snippet = `[mcp:${r.serverName} ${r.uri}]\n${text.slice(0, 1500)}`
+        const cost = estimateTokens(snippet)
+        if (cost > resourceBudget) break
+        resourceSnippets.push(snippet)
+        resourceBudget -= cost
+      } catch {
+        // skip unread resources
+      }
+    }
+    if (resourceSnippets.length) {
+      parts.push('## MCP resources\n' + resourceSnippets.join('\n\n'))
+    }
+  } catch {
+    // MCP optional during context build
+  }
+
   parts.push(`Workspace root: ${config.WORKSPACE_ROOT}`)
 
+  const systemPrompt = parts.join('\n\n')
   return {
-    systemPrompt: parts.join('\n\n'),
+    systemPrompt,
     profile,
     memorySnippets,
     skillSnippets,
+    transcriptSnippets,
+    recallSnippets,
+    tokensUsed: estimateTokens(systemPrompt),
+    budget,
   }
 }

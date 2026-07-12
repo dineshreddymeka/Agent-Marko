@@ -1,8 +1,8 @@
 /**
  * Run all phase verifiers that work in the current environment.
  * Skips Docker-dependent Phase 2 when Docker is unavailable.
+ * Matrix: phase1 → unit → phase3 → offline → a2ui → phase2(optional) → e2e → lighthouse.
  */
-import { join } from 'node:path'
 import { resolveBunExecutable } from './lib/bun-path'
 import { isDockerDaemonReady, resolveDocker, dockerPathEnv } from './lib/docker-path'
 

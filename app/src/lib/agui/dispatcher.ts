@@ -22,6 +22,7 @@ import {
 import type {
   HermesApprovalRequiredPayload,
   HermesContextPayload,
+  HermesCoworkProgressPayload,
   HermesCronFiredPayload,
   HermesSkillLearnedPayload,
   HermesTitlePayload,
@@ -31,6 +32,7 @@ import { useChatStore } from '@app/stores/chat'
 import { useSessionsStore } from '@app/stores/sessions'
 import { useUiStore } from '@app/stores/ui'
 import { processA2UIMessage } from '@app/lib/a2ui/processor'
+import { executeFrontendTool, isFrontendTool } from '@app/lib/agui/frontend-tools'
 import { generateId } from '@app/lib/utils'
 import type { ChatMessage } from '@app/stores/chat'
 import type { AgentState } from '@app/types/hermes'
@@ -48,18 +50,43 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
       chat.setRunStatus('running')
       chat.setRunId(e.runId ?? null)
       chat.setError(null)
+      chat.clearStage()
+      chat.setStage('starting')
       break
     }
 
     case EventType.RUN_FINISHED:
+      chat.setStage('done')
       chat.setRunStatus('idle')
       chat.setRunId(null)
+      // Finish any tools still marked executing (cancel / early finish races).
+      for (const [id, tc] of Object.entries(chat.toolCalls)) {
+        if (
+          tc.status === 'executing' ||
+          tc.status === 'pending' ||
+          tc.status === 'streaming-args'
+        ) {
+          chat.upsertToolCall(id, { status: 'done' })
+        }
+      }
+      window.setTimeout(() => {
+        useChatStore.getState().clearStage()
+      }, 1200)
       break
 
     case EventType.RUN_ERROR: {
       const e = event as RunErrorEvent
       chat.setError(e.message ?? 'Run failed')
       chat.setRunStatus('error')
+      chat.setStage('error')
+      for (const msgs of Object.values(chat.messagesBySession)) {
+        for (const m of msgs) {
+          if (m.streaming) {
+            chat.flushStreamBuffer(m.id)
+            chat.flushThinkingBuffer(m.id)
+          }
+        }
+      }
       break
     }
 
@@ -81,6 +108,7 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
 
     case EventType.TEXT_MESSAGE_START: {
       const e = event as TextMessageStartEvent
+      chat.setStage('writing')
       if (sessionId && e.messageId) {
         chat.addMessage(sessionId, {
           id: String(e.messageId),
@@ -109,8 +137,16 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
       break
     }
 
+    case EventType.THINKING_START:
+    case EventType.THINKING_END: {
+      // Thinking step boundaries; per-message UI state is driven by the
+      // THINKING_TEXT_MESSAGE_* events below.
+      break
+    }
+
     case EventType.THINKING_TEXT_MESSAGE_START: {
       const e = event as ThinkingTextMessageStartEvent
+      chat.setStage('thinking')
       if (sessionId && e.messageId) {
         const msgId = String(e.messageId)
         const existing = (chat.messagesBySession[sessionId] ?? []).find(
@@ -124,6 +160,7 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
             role: 'assistant',
             content: '',
             thinking: '',
+            streaming: true,
             createdAt: new Date().toISOString(),
           })
         }
@@ -142,17 +179,27 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
     }
 
     case EventType.THINKING_TEXT_MESSAGE_END: {
+      const e = event as { messageId?: string }
+      if (e.messageId) chat.flushThinkingBuffer(String(e.messageId))
       break
     }
 
     case EventType.TOOL_CALL_START: {
-      const e = event as ToolCallStartEvent
+      const e = event as ToolCallStartEvent & { parentMessageId?: string }
+      chat.setStage('tool', e.toolCallName)
       if (e.toolCallId && e.toolCallName) {
+        let messageId =
+          e.parentMessageId != null ? String(e.parentMessageId) : undefined
+        if (!messageId && sessionId) {
+          const msgs = chat.messagesBySession[sessionId] ?? []
+          messageId = [...msgs].reverse().find((m) => m.role === 'assistant')?.id
+        }
         chat.upsertToolCall(e.toolCallId, {
           id: e.toolCallId,
           name: e.toolCallName,
           args: '',
           status: 'streaming-args',
+          messageId,
         })
       }
       break
@@ -174,6 +221,28 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
       const e = event as ToolCallEndEvent
       if (e.toolCallId) {
         chat.upsertToolCall(e.toolCallId, { status: 'executing' })
+        const tc = chat.toolCalls[e.toolCallId]
+        if (tc && isFrontendTool(tc.name)) {
+          let args: Record<string, unknown> = {}
+          try {
+            args = JSON.parse(tc.args || '{}') as Record<string, unknown>
+          } catch {
+            args = {}
+          }
+          void executeFrontendTool(tc.name, args)
+            .then((result) => {
+              useChatStore.getState().upsertToolCall(e.toolCallId!, {
+                result,
+                status: 'done',
+              })
+            })
+            .catch((err: unknown) => {
+              useChatStore.getState().upsertToolCall(e.toolCallId!, {
+                result: { error: String(err) },
+                status: 'error',
+              })
+            })
+        }
       }
       break
     }
@@ -186,6 +255,10 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
           result: e.content,
           status: 'done',
         })
+        const executing = Object.values(chat.toolCalls).some(
+          (tc) => tc.id !== toolCallId && tc.status === 'executing',
+        )
+        if (!executing) chat.setStage('starting')
         if (sessionId) {
           chat.addMessage(sessionId, {
             id: generateId(),
@@ -263,7 +336,7 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
       } else if (name === 'hermes.cron.fired') {
         const payload = value as HermesCronFiredPayload
         ui.addToast({
-          title: 'Cron job fired',
+          title: 'Scheduled task fired',
           description: payload.jobName,
           variant: 'attention',
         })
@@ -276,6 +349,51 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
           toolName: payload.toolName,
           args: (payload.args ?? {}) as Record<string, unknown>,
         })
+      } else if (name === 'hermes.cowork.progress') {
+        const payload = value as HermesCoworkProgressPayload & { line?: string }
+        const line =
+          (typeof payload.line === 'string' && payload.line.trim()) ||
+          payload.text?.trim() ||
+          (payload.phase === 'tool' && payload.tool
+            ? `Running ${payload.tool}…`
+            : payload.phase === 'started'
+              ? `Open Cowork started (${payload.taskId})`
+              : payload.phase === 'ended'
+                ? `Open Cowork finished (${payload.taskId})`
+                : payload.phase === 'error'
+                  ? payload.text || 'Open Cowork error'
+                  : '')
+        if (line) {
+          const toolCalls = chat.toolCalls
+          const executing = Object.values(toolCalls).find(
+            (tc) =>
+              tc.name === 'delegate_to_cowork' &&
+              (tc.status === 'executing' ||
+                tc.status === 'pending' ||
+                tc.status === 'streaming-args'),
+          )
+          if (executing) {
+            const nextProgress =
+              payload.phase === 'delta' && executing.progress
+                ? `${executing.progress}${line}`.slice(-800)
+                : line.slice(0, 800)
+            chat.upsertToolCall(executing.id, { progress: nextProgress })
+          }
+        }
+        if (payload.phase === 'ended' && payload.ok !== false) {
+          ui.addToast({
+            title: 'Open Cowork finished',
+            description: payload.text?.slice(0, 120) || payload.taskId,
+            variant: 'success',
+          })
+        } else if (payload.phase === 'error') {
+          const aborted = /abort/i.test(payload.text ?? '')
+          ui.addToast({
+            title: aborted ? 'Open Cowork cancelled' : 'Open Cowork failed',
+            description: payload.text?.slice(0, 160) || payload.taskId,
+            variant: aborted ? 'attention' : 'danger',
+          })
+        }
       }
       break
     }

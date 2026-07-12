@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react'
 import { useChatStore } from '@app/stores/chat'
+import { useSettingsStore } from '@app/stores/settings'
+import { labelTitle, modelLabel } from '@app/lib/display-names'
 
 interface ContextRingProps {
   used?: number
@@ -43,15 +46,56 @@ export function ContextRing({ used = 0, max = 128_000 }: ContextRingProps) {
   )
 }
 
+type HealthLlm = {
+  mode: 'mock' | 'live'
+  mock: boolean
+  model: string | null
+}
+
 export function StatusFooter() {
   const contextUsage = useChatStore((s) => s.contextUsage)
-  const model = 'hermes-3-llama-3.1-8b'
+  const settingsModel = useSettingsStore((s) => s.model)
+  const [llm, setLlm] = useState<HealthLlm | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    const tick = async () => {
+      try {
+        const res = await fetch('/api/health', { credentials: 'include' })
+        if (!res.ok) return
+        const data = (await res.json()) as { llm?: HealthLlm }
+        if (!cancelled && data.llm) setLlm(data.llm)
+      } catch {
+        /* ignore */
+      }
+    }
+    void tick()
+    const id = window.setInterval(() => void tick(), 15_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+    }
+  }, [])
+
   const tokensUsed = contextUsage?.used ?? 0
   const tokensMax = contextUsage?.limit ?? 128_000
+  const rawModel =
+    llm?.mock ? 'mock' : (llm?.model ?? settingsModel)
+  const modelDisplay = modelLabel(rawModel)
+  const modeHint = llm?.mock
+    ? 'Mock LLM (HERMES_MOCK_LLM)'
+    : llm
+      ? 'Live LLM'
+      : undefined
 
   return (
     <footer className="flex h-8 shrink-0 items-center justify-between border-t border-border bg-canvas-subtle px-3 text-xs text-fg-muted">
-      <span className="font-mono">{model}</span>
+      <span title={modeHint ?? labelTitle(rawModel, modelDisplay)}>
+        {llm?.mock ? 'Mock LLM' : modelDisplay}
+        {llm && !llm.mock ? (
+          <span className="ml-1 text-fg-muted/70">· live</span>
+        ) : null}
+      </span>
       <div className="flex items-center gap-2">
         <ContextRing used={tokensUsed} max={tokensMax} />
         <span>

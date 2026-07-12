@@ -42,6 +42,7 @@ export const sessionsRepo = {
   },
 
   async create(input: {
+    id?: string
     title?: string
     groupName?: string | null
     profileId?: string | null
@@ -50,6 +51,7 @@ export const sessionsRepo = {
     const [row] = await db
       .insert(sessions)
       .values({
+        ...(input.id ? { id: input.id } : {}),
         title: input.title ?? 'New chat',
         groupName: input.groupName ?? null,
         profileId: input.profileId ?? null,
@@ -57,6 +59,13 @@ export const sessionsRepo = {
       .returning()
     if (!row) throw new Error('Failed to create session')
     return toDto(row)
+  },
+
+  /** Ensure a session row exists for threadId (AG-UI runs use session UUID as threadId). */
+  async ensure(id: string, title = 'New chat'): Promise<Session> {
+    const existing = await this.getById(id)
+    if (existing) return existing
+    return this.create({ id, title })
   },
 
   async update(

@@ -22,7 +22,15 @@
     "db:down": "docker compose down",
     "migrate": "bun run --filter server migrate",
     "db:backup": "bun run scripts/db-backup.ts",
-    "db:restore": "bun run scripts/db-restore.ts"
+    "db:restore": "bun run scripts/db-restore.ts",
+    "db:restore:verify": "bun run scripts/db-restore-verify.ts",
+    "db:preflight": "bun run scripts/db-preflight-integrity.ts",
+    "db:create-app-role": "bun run scripts/db-create-app-role.ts",
+    "db:prune-events": "bun run scripts/db-prune-events.ts",
+    "office:sso-setup": "bun run scripts/setup-microsoft-sso.ts",
+    "office:sso-open": "bun run scripts/setup-microsoft-sso.ts -- --open",
+    "openapi:export": "bun run scripts/openapi-export.ts",
+    "sca:check": "bun run scripts/sca-check.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.28.0",

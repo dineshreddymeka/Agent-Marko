@@ -8,6 +8,9 @@ export type PanelName =
   | 'workspace'
   | 'skills'
   | 'memory'
+  | 'connections'
+  | 'office'
+  | 'briefing'
   | 'cron'
   | 'profiles'
   | 'settings'
@@ -19,11 +22,21 @@ export interface Toast {
   variant?: 'default' | 'success' | 'danger' | 'attention'
 }
 
+/** Prefill for Cowork New-request form (from Office gallery). */
+export type CoworkFormPrefill = {
+  deliverableType: 'presentation' | 'word' | 'spreadsheet' | 'pdf' | 'other'
+  goalSeed?: string
+}
+
 interface UiState {
   theme: Theme
   sidebarOpen: boolean
   rightPanelOpen: boolean
   activePanel: PanelName | null
+  /** Workspace file path requested by frontend tool `open_file_preview`. */
+  workspacePreviewPath: string | null
+  /** One-shot Office → Cowork form prefill (not persisted). */
+  coworkFormPrefill: CoworkFormPrefill | null
   commandPaletteOpen: boolean
   toasts: Toast[]
   setTheme: (theme: Theme) => void
@@ -33,6 +46,8 @@ interface UiState {
   setSidebarOpen: (open: boolean) => void
   setRightPanelOpen: (open: boolean) => void
   setActivePanel: (panel: PanelName | null) => void
+  setWorkspacePreviewPath: (path: string | null) => void
+  setCoworkFormPrefill: (prefill: CoworkFormPrefill | null) => void
   setCommandPaletteOpen: (open: boolean) => void
   addToast: (toast: Omit<Toast, 'id'> & { id?: string }) => void
   removeToast: (id: string) => void
@@ -53,6 +68,8 @@ export const useUiStore = create<UiState>()(
       sidebarOpen: true,
       rightPanelOpen: false,
       activePanel: null,
+      workspacePreviewPath: null,
+      coworkFormPrefill: null,
       commandPaletteOpen: false,
       toasts: [],
       setTheme: (theme) => {
@@ -70,6 +87,8 @@ export const useUiStore = create<UiState>()(
       setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
       setRightPanelOpen: (rightPanelOpen) => set({ rightPanelOpen }),
       setActivePanel: (activePanel) => set({ activePanel }),
+      setWorkspacePreviewPath: (workspacePreviewPath) => set({ workspacePreviewPath }),
+      setCoworkFormPrefill: (coworkFormPrefill) => set({ coworkFormPrefill }),
       setCommandPaletteOpen: (commandPaletteOpen) => set({ commandPaletteOpen }),
       addToast: (toast) =>
         set((s) => ({

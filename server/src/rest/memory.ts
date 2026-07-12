@@ -28,19 +28,39 @@ export async function handleMemory(req: Request, path: string): Promise<Response
       sourceSession: body.sourceSession ? String(body.sourceSession) : null,
       importance: typeof body.importance === 'number' ? body.importance : 0.5,
     })
+    const { queueEmbedding } = await import('../vector/indexer')
+    queueEmbedding('memory', entry.id, entry.content)
     return jsonResponse(entry, 201)
   }
 
   if (parts.length === 3) {
     const id = parts[2]!
+    if (req.method === 'GET') {
+      const entries = await withDatabase(() => memoryRepo.list(), [])
+      const entry = entries.find((e) => e.id === id)
+      if (!entry) return jsonResponse({ error: 'Not found' }, 404)
+      return jsonResponse(entry)
+    }
     if (req.method === 'PATCH') {
       const body = await parseJson(req)
       const entry = await memoryRepo.update(id, body ?? {})
       if (!entry) return jsonResponse({ error: 'Not found' }, 404)
+      const { queueEmbedding } = await import('../vector/indexer')
+      queueEmbedding('memory', entry.id, entry.content)
       return jsonResponse(entry)
     }
     if (req.method === 'DELETE') {
-      return jsonResponse({ deleted: await memoryRepo.delete(id) })
+      const deleted = await memoryRepo.delete(id)
+      if (deleted) {
+        void import('../indexer/service')
+          .then(({ queueRuntimeDelete }) => queueRuntimeDelete('memory', id))
+          .catch((err) => {
+            void import('../log').then(({ logger }) =>
+              logger.warn('Failed to queue memory index delete', { id, error: String(err) }),
+            )
+          })
+      }
+      return jsonResponse({ deleted })
     }
   }
 

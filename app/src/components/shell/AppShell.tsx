@@ -1,5 +1,6 @@
 import { Moon, Sun, SunDim } from 'lucide-react'
-import { Outlet } from '@tanstack/react-router'
+import { useEffect } from 'react'
+import { Outlet, useRouterState } from '@tanstack/react-router'
 import { IconRail } from '@app/components/shell/IconRail'
 import { Sidebar } from '@app/components/shell/Sidebar'
 import { RightPanel } from '@app/components/shell/RightPanel'
@@ -11,11 +12,16 @@ import { Toasts } from '@app/components/common/Toasts'
 import { ErrorBoundary } from '@app/components/common/ErrorBoundary'
 import { useKeyboardShortcuts } from '@app/hooks/useKeyboardShortcuts'
 import { useUiStore, type Theme } from '@app/stores/ui'
+import { registerSlashCommand } from '@app/lib/slash-commands'
 
 const themeIcons: Record<Theme, typeof Moon> = {
   dark: Moon,
   dim: SunDim,
   light: Sun,
+}
+
+function isChatRoute(pathname: string): boolean {
+  return pathname === '/' || pathname.startsWith('/session/')
 }
 
 export function AppShell() {
@@ -27,6 +33,30 @@ export function AppShell() {
   const setSidebarOpen = useUiStore((s) => s.setSidebarOpen)
   const rightPanelOpen = useUiStore((s) => s.rightPanelOpen)
   const setRightPanelOpen = useUiStore((s) => s.setRightPanelOpen)
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const showSessionsSidebar = isChatRoute(pathname)
+
+  useEffect(() => {
+    if (!showSessionsSidebar) {
+      setSidebarOpen(false)
+    } else if (window.matchMedia('(max-width: 767px)').matches) {
+      setSidebarOpen(false)
+    }
+  }, [showSessionsSidebar, setSidebarOpen])
+
+  useEffect(() => {
+    void fetch('/api/mcp/prompts')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { prompts?: Array<{ slash: string; description?: string }> } | null) => {
+        for (const p of data?.prompts ?? []) {
+          registerSlashCommand({
+            cmd: p.slash,
+            desc: p.description ?? `MCP prompt ${p.slash}`,
+          })
+        }
+      })
+      .catch(() => undefined)
+  }, [])
 
   const ThemeIcon = themeIcons[theme]
 
@@ -36,19 +66,7 @@ export function AppShell() {
         <div className="relative flex min-h-0 flex-1">
           <IconRail />
 
-          {!sidebarOpen && (
-            <button
-              type="button"
-              title="Show sidebar (Ctrl+B)"
-              aria-label="Show sidebar"
-              onClick={() => setSidebarOpen(true)}
-              className="absolute left-2 top-2 z-10 rounded-md border border-border bg-canvas-subtle px-2 py-1 text-xs text-fg-muted hover:text-fg md:left-12"
-            >
-              Sidebar
-            </button>
-          )}
-
-          {sidebarOpen ? (
+          {showSessionsSidebar && sidebarOpen ? (
             <button
               type="button"
               aria-label="Close sidebar"
@@ -57,7 +75,7 @@ export function AppShell() {
             />
           ) : null}
 
-          <Sidebar />
+          {showSessionsSidebar ? <Sidebar /> : null}
 
           <Outlet />
 

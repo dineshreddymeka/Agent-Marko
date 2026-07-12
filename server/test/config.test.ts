@@ -16,4 +16,14 @@ describe('config env booleans', () => {
     expect(loadConfig().AUTO_APPROVE_ALL).toBe(true)
     process.env.AUTO_APPROVE_ALL = prev
   })
+
+  test('INDEXER_ENABLED defaults true and accepts false', async () => {
+    const prev = process.env.INDEXER_ENABLED
+    delete process.env.INDEXER_ENABLED
+    const { loadConfig } = await import('../src/config')
+    expect(loadConfig().INDEXER_ENABLED).toBe(true)
+    process.env.INDEXER_ENABLED = 'false'
+    expect(loadConfig().INDEXER_ENABLED).toBe(false)
+    process.env.INDEXER_ENABLED = prev
+  })
 })

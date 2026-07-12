@@ -1,10 +1,15 @@
-# Hermes WebUI Rebuild — Detailed Engineering Plan
+# Open Jarvis — Working Notes (NOT source of truth)
 
-Migrate the Hermes Agent WebUI concept from vanilla JS (7 modules, ~22k lines, no build step) to a modern, ultrafast, fully open-source stack, adding first-class AG-UI and A2UI protocol support for a new Hermes agent built from scratch, with a Cursor-agent-screen / GitHub-Copilot look.
+> **Product:** Open Jarvis  
+> **Author:** Dinesh Reddy Meka  
+> **SOURCE OF TRUTH:** `C:\Users\dines\BMC\BMC-backend\HERMES-UI-PLAN.md`  
+> See also `docs/SOURCE-OF-TRUTH.md` and `docs/FEATURE-VERIFICATION.md`. This file tracks local implementation progress and must be reconciled **to** the BMC plan (including **Postgres 17 + pgvector 0.8.5-pg17**). Do not treat hermes-ui checkboxes as authoritative over the BMC checklist.
 
-## Task checklist
+Rebuild the agent WebUI as **Open Jarvis** from the Hermes WebUI concept (vanilla JS reference) to a modern Bun + React 19 + AG-UI/A2UI stack.
 
-**Last updated:** 2026-07-11 · Repo: [Agent-Marko](https://github.com/dineshreddymeka/Agent-Marko)
+## Task checklist (local progress — reconcile to BMC SoT)
+
+**Last updated:** 2026-07-11 · Repo: [Agent-Marko](https://github.com/dineshreddymeka/Agent-Marko) · **SoT:** BMC-backend/HERMES-UI-PLAN.md
 
 | | Phase | Status |
 |---|--------|--------|
@@ -47,7 +52,7 @@ Migrate the Hermes Agent WebUI concept from vanilla JS (7 modules, ~22k lines, n
 - Runtime and tooling: **Bun** everywhere — package manager, script runner, test runner (`bun test`), backend server runtime.
 - Frontend: **React 19 + React Compiler + Vite (SWC) + TypeScript strict**. Chosen for the only stable first-party AG-UI/A2UI support plus richest ecosystem; speed engineered via compiler, virtualization, code-splitting, workers.
 - Protocols: **AG-UI** (agent-user event stream; CopilotKit SDK) and **A2UI** (Google's declarative generative UI, v0.9 line) carried over AG-UI.
-- Database: **Postgres 17 + pgvector 0.8.5** (`pgvector/pgvector:0.8.5-pg17`, latest stable line) in Docker with **bind-mounted data dir** (no named volumes — addresses volume-loss concern). Access via native **`Bun.sql`**; **Drizzle ORM** for schema/migrations only.
+- Database: **Postgres 17 + pgvector 0.8.5** (`pgvector/pgvector:0.8.5-pg17`) per BMC SoT — local docker may still be on pg17 until W3 migrates; bind-mounted data dir. Access via native **`Bun.sql`**; **Drizzle ORM** for schema/migrations only.
 - Design: dark-first, **GitHub Primer** design tokens, Cursor-style layout.
 - Licensing hard rule: **MIT / Apache-2.0 / PostgreSQL License only.** No GPL, AGPL, SSPL, BSL anywhere in the dependency tree (rules out Open WebUI, MongoDB, Redis). Every new dependency gets a license check before install.
 - Big-company backing: React (Meta), TypeScript (Microsoft), A2UI (Google), AG-UI (CopilotKit + Microsoft Agent Framework + Google ADK integrations), Primer (GitHub), Postgres (industry), Vite (VoidZero), shadcn/ui (Vercel-affiliated), Bun (Oven).
@@ -60,7 +65,7 @@ hermes-ui/
 ├─ package.json                 # workspaces: app, server, packages/*; scripts below
 ├─ bunfig.toml
 ├─ tsconfig.base.json           # strict, path aliases @app/*, @server/*, @shared/*
-├─ docker-compose.yml           # postgres 17 + pgvector, bind mount
+├─ docker-compose.yml           # Postgres 17 + pgvector, pinned tag, bind mount
 ├─ .env.example                 # DATABASE_URL, HERMES_DATA_DIR, HERMES_BACKUP_DIR,
 │                               # LLM_BASE_URL, LLM_API_KEY, EMBEDDINGS_MODEL...
 │  (PG data + backups live OUTSIDE the repo: C:\hermes-data\{postgres,backups})

@@ -2,6 +2,7 @@ import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { config } from '../../config'
 import { ToolError } from '../../errors'
+import { resolveInsideRoot } from '../../fs/path-jail'
 import { registerTool } from './registry'
 
 function workspaceRoot(): string {
@@ -9,12 +10,11 @@ function workspaceRoot(): string {
 }
 
 function jailPath(relative: string): string {
-  const root = workspaceRoot()
-  const full = resolve(root, relative)
-  if (!full.startsWith(root)) {
+  try {
+    return resolveInsideRoot(workspaceRoot(), relative)
+  } catch {
     throw new ToolError('Path escapes workspace root')
   }
-  return full
 }
 
 registerTool({
@@ -33,7 +33,9 @@ registerTool({
 
 registerTool({
   name: 'write_file',
-  description: 'Write content to a workspace file',
+  description:
+    'Write content to a workspace file under WORKSPACE_ROOT. Use for drafts/work files ' +
+    '(e.g. drafts/jnj-draft.md). Call this when the user asks to create/save a document or draft.',
   dangerous: true,
   parameters: {
     type: 'object',
@@ -43,10 +45,15 @@ registerTool({
     },
     required: ['path', 'content'],
   },
-  async execute(args) {
+  async execute(args, ctx) {
     const path = jailPath(String(args.path))
     await mkdir(dirname(path), { recursive: true })
     await writeFile(path, String(args.content), 'utf8')
+    void import('../../indexer/service')
+      .then(({ queueWorkspaceFile }) =>
+        queueWorkspaceFile(String(args.path), { sessionId: ctx.sessionId, runId: ctx.runId }),
+      )
+      .catch(() => undefined)
     return { ok: true, path: String(args.path) }
   },
 })

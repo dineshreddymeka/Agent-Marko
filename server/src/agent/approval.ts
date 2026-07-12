@@ -2,6 +2,7 @@ import { EventType } from '@ag-ui/core'
 import { ApprovalRejectedError, ApprovalTimeoutError } from '../errors'
 import type { EventEmitter } from '../agui/events'
 import { settingsRepo } from '../db/repositories/settings'
+import { getCronBindings } from '../cron/run-bindings'
 
 export type ApprovalDecision = 'approve' | 'reject' | 'always' | 'always_tool'
 
@@ -16,6 +17,7 @@ type PendingApproval = {
   reject: (err: Error) => void
   timer: ReturnType<typeof setTimeout>
   sessionId: string
+  runId: string
   toolName: string
 }
 
@@ -113,6 +115,11 @@ export async function requestApproval(opts: {
   emit: EventEmitter
   dangerous: boolean
 }): Promise<ApprovalDecision> {
+  // Headless cron runs with per-job auto-approve bypass the gate for this run only.
+  if (getCronBindings()?.headlessAutoApprove) {
+    return 'approve'
+  }
+
   if (shouldAutoApprove(opts.sessionId, opts.toolName, opts.dangerous)) {
     return 'approve'
   }
@@ -128,6 +135,7 @@ export async function requestApproval(opts: {
       reject,
       timer,
       sessionId: opts.sessionId,
+      runId: opts.runId,
       toolName: opts.toolName,
     })
 
@@ -168,4 +176,16 @@ export function resolveApproval(toolCallId: string, decision: ApprovalDecision):
 
   entry.resolve(decision)
   return true
+}
+
+export function cancelPendingApprovalsForRun(runId: string): number {
+  let cancelled = 0
+  for (const [toolCallId, entry] of pending) {
+    if (entry.runId !== runId) continue
+    clearTimeout(entry.timer)
+    pending.delete(toolCallId)
+    entry.reject(new ApprovalRejectedError('Run cancelled'))
+    cancelled++
+  }
+  return cancelled
 }
