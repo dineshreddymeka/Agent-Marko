@@ -12,3 +12,4 @@ workspace/
 .lighthouse-report.json
 test-results/
 *.tsbuildinfo
+coverage
