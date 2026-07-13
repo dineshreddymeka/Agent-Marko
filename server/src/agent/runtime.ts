@@ -23,6 +23,8 @@ import {
   shouldAutoCreateDocumentDraft,
 } from './document-intent'
 import { looksLikeFormIntent } from './form-intent'
+import { looksLikeAguiTroubleshootIntent } from './agui-troubleshoot-intent'
+import { fetchAguiTroubleshootBrief } from './agui-troubleshoot'
 import { splitLeakedPlanning } from './response-sanitize'
 import { messagesRepo } from '../db/repositories/messages'
 import { sessionsRepo } from '../db/repositories/sessions'
@@ -47,13 +49,20 @@ import './tools/chrome'
 const MAX_TOOL_ITERATIONS = 20
 const THINKING_FLUSH_MS = 100
 
-function surfaceIdFromToolResult(result: unknown): string | null {
+const A2UI_SURFACE_TOOL_NAMES = new Set([
+  'cron_form_show',
+  'document_form_show',
+  'form_request_show',
+  'a2ui_render',
+])
+
+function a2uiPayloadFromToolResult(result: unknown): Record<string, unknown> | null {
   if (!result || typeof result !== 'object') return null
-  const customEvent = (result as { customEvent?: { value?: unknown } }).customEvent
-  const value = customEvent?.value
+  const value = (result as { customEvent?: { value?: unknown } }).customEvent?.value
   if (!value || typeof value !== 'object') return null
-  const sid = (value as { surfaceId?: unknown }).surfaceId
-  return typeof sid === 'string' && sid.length > 0 ? sid : null
+  const payload = value as Record<string, unknown>
+  const sid = payload.surfaceId
+  return typeof sid === 'string' && sid.length > 0 ? payload : null
 }
 
 async function persistInterceptorAssistantMessage(opts: {
@@ -61,7 +70,7 @@ async function persistInterceptorAssistantMessage(opts: {
   runId: string
   messageId: string
   content: string
-  a2uiSurfaceId?: string | null
+  a2uiPayload?: Record<string, unknown> | null
 }): Promise<void> {
   try {
     const msg = await messagesRepo.create({
@@ -72,11 +81,11 @@ async function persistInterceptorAssistantMessage(opts: {
       content: opts.content,
       thinking: null,
       tokens: 0,
-      a2ui: opts.a2uiSurfaceId ? { surfaceId: opts.a2uiSurfaceId } : null,
+      a2ui: opts.a2uiPayload ?? null,
     })
     queueEmbedding('message', msg.id, opts.content)
   } catch (err) {
-    log.warn('Failed to persist assistant message', { error: String(err) })
+    logger.warn('Failed to persist assistant message', { error: String(err) })
   }
 }
 
@@ -274,9 +283,11 @@ export async function runNativeAgent(
 
     // Deterministic A2UI interceptors run BEFORE context build so a slow/hung
     // embedding bridge cannot block cron/document/form surfaces.
+    // Product-critical form/PDF flows always use interceptors — not only in degraded mode.
+    const runA2uiInterceptors = true
 
     // Deterministic cron form for small models that narrate instead of calling tools.
-    if (plan.allowPreLlmInterceptors && shouldAutoShowCronForm(lastUserText)) {
+    if (runA2uiInterceptors && shouldAutoShowCronForm(lastUserText)) {
       const tool = getTool('cron_form_show')
       if (tool) {
         const messageId = randomUUID()
@@ -318,7 +329,7 @@ export async function runNativeAgent(
             runId: input.runId,
             messageId,
             content: ack,
-            a2uiSurfaceId: surfaceIdFromToolResult(result),
+            a2uiPayload: a2uiPayloadFromToolResult(result),
           })
         } catch (err) {
           log.warn('Failed to persist assistant message', { error: String(err) })
@@ -330,7 +341,7 @@ export async function runNativeAgent(
 
     // Deterministic document/PPT form for vague asks (mirrors cron_form_show).
     // Prevents plain-text Topic/Audience/Length questionnaires and "me" stub drafts.
-    if (plan.allowPreLlmInterceptors && shouldAutoShowDocumentForm(lastUserText)) {
+    if (runA2uiInterceptors && shouldAutoShowDocumentForm(lastUserText)) {
       const tool = getTool('document_form_show')
       if (tool) {
         const prefill = buildDocumentFormFromUserText(lastUserText)
@@ -382,7 +393,7 @@ export async function runNativeAgent(
             runId: input.runId,
             messageId,
             content: ack,
-            a2uiSurfaceId: surfaceIdFromToolResult(result),
+            a2uiPayload: a2uiPayloadFromToolResult(result),
           })
         } catch (err) {
           log.warn('Failed to persist assistant message', { error: String(err) })
@@ -394,7 +405,7 @@ export async function runNativeAgent(
 
     // Deterministic generic form-request surface (mirrors cron/document forms).
     // Prevents greeting resets and plain-text "what can I help with?" on form asks.
-    if (plan.allowPreLlmInterceptors && shouldAutoShowFormRequest(lastUserText)) {
+    if (runA2uiInterceptors && shouldAutoShowFormRequest(lastUserText)) {
       const tool = getTool('form_request_show')
       if (tool) {
         const messageId = randomUUID()
@@ -437,7 +448,7 @@ export async function runNativeAgent(
             runId: input.runId,
             messageId,
             content: ack,
-            a2uiSurfaceId: surfaceIdFromToolResult(result),
+            a2uiPayload: a2uiPayloadFromToolResult(result),
           })
         } catch (err) {
           log.warn('Failed to persist assistant message', { error: String(err) })
@@ -505,7 +516,21 @@ export async function runNativeAgent(
       }
     }
 
-    const ctx = await buildAgentContext(input)
+    let aguiTroubleshootSummary: string | undefined
+    if (looksLikeAguiTroubleshootIntent(lastUserText)) {
+      try {
+        const brief = await fetchAguiTroubleshootBrief(lastUserText, signal)
+        aguiTroubleshootSummary = brief.summary
+        log.debug('AGUI troubleshoot brief loaded', {
+          source: brief.source,
+          itemCount: brief.itemCount,
+        })
+      } catch (err) {
+        log.warn('AGUI troubleshoot brief failed', { error: String(err) })
+      }
+    }
+
+    const ctx = await buildAgentContext(input, { aguiTroubleshootSummary })
     const chatMessages = toChatMessages(input, ctx.systemPrompt)
     // Capability hub retrieval (semantic/lexical) or HERMES_ROUTING=legacy subset.
     const tools = plan.tools.tools
@@ -653,6 +678,7 @@ export async function runNativeAgent(
 
       try {
         const msg = await messagesRepo.create({
+          id: messageId,
           sessionId: input.threadId,
           runId: input.runId,
           role: 'assistant',
@@ -808,6 +834,16 @@ export async function runNativeAgent(
         }
 
         if (aborted) return true
+
+        const a2uiPayload = a2uiPayloadFromToolResult(result)
+        if (a2uiPayload && A2UI_SURFACE_TOOL_NAMES.has(call.name)) {
+          void messagesRepo.patchA2ui(messageId, a2uiPayload).catch((err) => {
+            log.warn('Failed to persist A2UI surface on assistant message', {
+              error: String(err),
+              messageId,
+            })
+          })
+        }
 
         if (errorPayload) {
           await emit({

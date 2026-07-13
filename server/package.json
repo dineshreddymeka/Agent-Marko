@@ -6,17 +6,21 @@
   "scripts": {
     "dev": "bun --hot src/index.ts",
     "migrate": "bun src/db/migrate.ts",
+    "check-auth-db": "bun scripts/check-auth-db.ts",
     "build": "bun build src/index.ts --outdir dist --target bun",
     "test": "bun test"
   },
   "dependencies": {
     "@ag-ui/core": "^0.0.57",
+    "@better-auth/drizzle-adapter": "^1.6.23",
     "@hermes/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "better-auth": "^1.2.8",
+    "better-auth-credentials-plugin": "^0.5.2",
     "croner": "^10.0.1",
     "drizzle-kit": "^0.31.1",
     "drizzle-orm": "^0.45.2",
+    "ldap-authentication": "^4.0.4",
     "zod": "^4.4.3"
   }
 }

@@ -26,4 +26,32 @@ describe('config env booleans', () => {
     expect(loadConfig().INDEXER_ENABLED).toBe(false)
     process.env.INDEXER_ENABLED = prev
   })
+
+  test('infers HERMES_AGENT_LLM_URL from keyed non-bridge LLM_BASE_URL', async () => {
+    const prevAgent = process.env.HERMES_AGENT_LLM_URL
+    const prevBase = process.env.LLM_BASE_URL
+    const prevKey = process.env.LLM_API_KEY
+    delete process.env.HERMES_AGENT_LLM_URL
+    process.env.LLM_BASE_URL = 'https://api.openai.com/v1'
+    process.env.LLM_API_KEY = 'sk-test'
+    const { loadConfig } = await import('../src/config')
+    expect(loadConfig().HERMES_AGENT_LLM_URL).toBe('https://api.openai.com/v1')
+    process.env.HERMES_AGENT_LLM_URL = prevAgent
+    process.env.LLM_BASE_URL = prevBase
+    process.env.LLM_API_KEY = prevKey
+  })
+
+  test('does not infer agent URL from lm-bridge base', async () => {
+    const prevAgent = process.env.HERMES_AGENT_LLM_URL
+    const prevBase = process.env.LLM_BASE_URL
+    const prevKey = process.env.LLM_API_KEY
+    delete process.env.HERMES_AGENT_LLM_URL
+    process.env.LLM_BASE_URL = 'http://127.0.0.1:3456/v1'
+    process.env.LLM_API_KEY = 'local'
+    const { loadConfig } = await import('../src/config')
+    expect(loadConfig().HERMES_AGENT_LLM_URL).toBe('')
+    process.env.HERMES_AGENT_LLM_URL = prevAgent
+    process.env.LLM_BASE_URL = prevBase
+    process.env.LLM_API_KEY = prevKey
+  })
 })

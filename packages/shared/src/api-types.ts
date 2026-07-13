@@ -377,6 +377,13 @@ export interface CoworkSetupResponse {
 /** Status of the Jarvis stdio MCP bridge entry in Open Cowork's mcp-config.json. */
 export interface CoworkMcpBridgeStatus {
   registered: boolean
+  readiness: 'not_configured' | 'configured' | 'connected' | 'degraded'
+  /** Entry exists in mcp-config (may be disabled). */
+  entryPresent?: boolean
+  /** Entry is enabled for Cowork to spawn. */
+  enabled?: boolean
+  scriptExists?: boolean
+  lastActivityAt?: string | null
   command: string
   configPath: string
   hint: string
@@ -407,6 +414,9 @@ export interface HealthResponse {
   }
   /** better-auth social provider ids when configured (no secrets). */
   oauthProviders: string[]
+  ldapEnabled: boolean
+  authRequired: boolean
+  authDb: boolean
 }
 
 /** Generic error body returned by most REST handlers. */

@@ -15,7 +15,8 @@ Hermes UI is a Bun monorepo: `app/` (React 19 + Vite, port **5173**), `server/` 
 ### Environment / config
 - `.env` (gitignored) is required and already created for this VM with a Linux `HERMES_DATA_DIR` (`/home/ubuntu/hermes-data`), a generated `BETTER_AUTH_SECRET`, and `HERMES_MOCK_LLM=1` + `LLM_API_KEY=mock` so the agent runs without a real LLM key. Set a real `LLM_API_KEY` (and unset the mock flags) to use a live OpenAI-compatible provider.
 - Keep the Postgres data dir OUTSIDE the repo. If `HERMES_DATA_DIR` points inside `/workspace`, Docker writes root-owned files there and `eslint`/`tsc` fail with `EACCES` while scanning them.
-- In localhost mode (`HOST=127.0.0.1`, `ALLOW_SIGNUP=false`) auth is bypassed, so no login is needed for local dev/testing.
+- In localhost mode (`HOST=127.0.0.1`, `ALLOW_SIGNUP=false`) auth is bypassed, so no login is needed for local dev/testing — **unless** `LDAP_ENABLED=1`, which forces sign-in via `/login` (LDAP username/password).
+- **LDAP (fleet):** set `LDAP_ENABLED=1`, `LDAP_URL`, `LDAP_BASE_DN`, and usually a service bind (`LDAP_BIND_DN` / `LDAP_BIND_PASSWORD`). AD default attribute is `sAMAccountName`; set `LDAP_EMAIL_DOMAIN` when directory entries lack `mail`. Per-host public URL: `BETTER_AUTH_URL=https://<host>:3001`. Health exposes `ldapEnabled`, `authRequired`, and `authDb` at `GET /api/health`. Auth sessions persist in Postgres (`0015_auth.sql` — tables `user`, `session`, `account`, `verification`); run `bun run migrate` on every host.
 - **Agent LLM / lm-bridge:** `tools/lm-bridge` is **development-only** text-chat degradation — it strips `tools` and cannot run MCP/A2UI/Cowork. Full Cursor-like agent behavior needs a tool-capable OpenAI-compatible endpoint.
   - `HERMES_AGENT_LLM_URL` — preferred tool-capable base URL for `/agui` (tried first).
   - `LLM_BASE_URL` — used when agent URL unset; if it points at `:3456` (lm-bridge), runtime falls back to bridge only when the agent circuit is open / URL unset (tools unavailable; UI gets `hermes.capabilities.degraded`).
@@ -25,8 +26,8 @@ Hermes UI is a Bun monorepo: `app/` (React 19 + Vite, port **5173**), `server/` 
   - `HERMES_LM_BRIDGE=0|1` — optional auto-start of lm-bridge from `scripts/dev.ts` for local text chat only.
   - Manifest: `GET /api/capabilities` (optional `?probe=1`); warm MCP+manifest+agent probe: `POST /api/capabilities/warm` (returns `mcpReconnect` + `agentLlm`). Debug: `GET /api/debug/health` includes `capabilities` + `agentLlm`. Staging checklist: `docs/CAPABILITIES-STAGING.md`.
   - **Internet (default-on):** `web_search` + `fetch_url` are always offered when tools are enabled. Needs a tool-capable `HERMES_AGENT_LLM_URL` (lm-bridge alone cannot run tools).
-    - `WEB_SEARCH_PROVIDER` — `auto` (race keyed providers when key set, else DuckDuckGo), `brave`, `tavily`, `serper`, or `duckduckgo`.
-    - `WEB_SEARCH_API_KEY` — required for Brave/Tavily/Serper quality; prefer `WEB_SEARCH_PROVIDER=tavily` (or brave) in production. DuckDuckGo remains the keyless fallback.
+  - `WEB_SEARCH_PROVIDER` — `auto` (race keyed providers when key set, else DuckDuckGo), `google`, `brave`, `tavily`, `serper`, or `duckduckgo`.
+  - `WEB_SEARCH_API_KEY` — required for Google/Brave/Tavily/Serper. For Google results: `serper` (serper.dev key, fastest) or `google` (official Custom Search JSON API; also needs `WEB_SEARCH_GOOGLE_CX` engine id). DuckDuckGo remains the keyless fallback.
 
 ### Lint / test / build
 - Lint: `bun run lint` (warnings are expected; exit 0).

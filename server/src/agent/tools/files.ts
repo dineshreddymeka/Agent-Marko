@@ -1,12 +1,12 @@
 import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join } from 'node:path'
 import { config } from '../../config'
 import { ToolError } from '../../errors'
 import { resolveInsideRoot } from '../../fs/path-jail'
 import { registerTool } from './registry'
 
 function workspaceRoot(): string {
-  return resolve(process.cwd(), config.WORKSPACE_ROOT)
+  return config.WORKSPACE_ROOT
 }
 
 function jailPath(relative: string): string {

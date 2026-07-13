@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useSettingsStore } from '@app/stores/settings'
 import { McpSubPanel } from '@app/components/panels/McpSubPanel'
@@ -34,6 +34,7 @@ export function SettingsPanel() {
   const setWorkspaceRoot = useSettingsStore((s) => s.setWorkspaceRoot)
   const setDefaultProfileId = useSettingsStore((s) => s.setDefaultProfileId)
   const addToast = useUiStore((s) => s.addToast)
+  const queryClient = useQueryClient()
 
   const [approval, setApproval] = useState<ApprovalConfig | null>(null)
   const [approvalLoading, setApprovalLoading] = useState(false)
@@ -82,6 +83,9 @@ export function SettingsPanel() {
     onSuccess: () => {
       setApiKeyDraft('')
       addToast({ title: 'Settings saved', variant: 'success' })
+      void queryClient.invalidateQueries({ queryKey: ['workspace-tree'] })
+      void queryClient.invalidateQueries({ queryKey: ['workspace-git'] })
+      void queryClient.invalidateQueries({ queryKey: ['workspace-file'] })
       void refetch()
     },
     onError: () => addToast({ title: 'Save failed', variant: 'danger' }),
@@ -329,8 +333,15 @@ export function SettingsPanel() {
               type="text"
               value={workspaceRoot}
               onChange={(e) => setWorkspaceRoot(e.target.value)}
+              placeholder="C:\path\to\workspace or ./workspace"
               className="w-full rounded border border-border bg-canvas px-3 py-1.5 text-fg"
             />
+            <p className="mt-1 text-[10px] text-fg-subtle">
+              Defaults to <span className="font-mono">HERMES_DATA_DIR/workspace</span> per host
+              (fleet deploy: set only <span className="font-mono">HERMES_DATA_DIR</span> in env).
+              Click Save to server after changing — no API restart needed unless{' '}
+              <span className="font-mono">WORKSPACE_ROOT</span> is set in env (env wins).
+            </p>
           </section>
 
           <section

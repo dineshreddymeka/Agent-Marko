@@ -79,6 +79,29 @@ async function searchBrave(query: string, signal?: AbortSignal): Promise<WebSear
   }))
 }
 
+/** Official Google Programmable Search (Custom Search JSON API) — low latency, real Google index. */
+async function searchGoogle(query: string, signal?: AbortSignal): Promise<WebSearchResult[]> {
+  const key = config.WEB_SEARCH_API_KEY
+  const cx = config.WEB_SEARCH_GOOGLE_CX.trim()
+  if (!key) throw new ToolError('Google search requires WEB_SEARCH_API_KEY')
+  if (!cx) throw new ToolError('Google search requires WEB_SEARCH_GOOGLE_CX (Programmable Search engine id)')
+  const url = new URL('https://www.googleapis.com/customsearch/v1')
+  url.searchParams.set('key', key)
+  url.searchParams.set('cx', cx)
+  url.searchParams.set('q', query)
+  url.searchParams.set('num', '8')
+  const res = await fetch(url, { signal, headers: { Accept: 'application/json' } })
+  if (!res.ok) throw new ToolError(`Google search failed (${res.status})`)
+  const json = (await res.json()) as {
+    items?: Array<{ title?: string; link?: string; snippet?: string }>
+  }
+  return (json.items ?? []).map((r) => ({
+    title: r.title ?? '',
+    url: r.link ?? '',
+    snippet: r.snippet ?? '',
+  }))
+}
+
 async function searchTavily(query: string, signal?: AbortSignal): Promise<WebSearchResult[]> {
   const key = config.WEB_SEARCH_API_KEY
   if (!key) throw new ToolError('Tavily search requires WEB_SEARCH_API_KEY')
@@ -119,8 +142,67 @@ async function searchSerper(query: string, signal?: AbortSignal): Promise<WebSea
   }))
 }
 
-/** Keyless fallback via DuckDuckGo Instant Answer API */
-async function searchDuckDuckGo(query: string, signal?: AbortSignal): Promise<WebSearchResult[]> {
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#x27;|&#39;/gi, "'")
+    .trim()
+}
+
+/** DDG wraps result hrefs in a /l/?uddg= redirect — unwrap to the real URL. */
+function unwrapDdgHref(href: string): string {
+  try {
+    const u = href.startsWith('//') ? new URL(`https:${href}`) : new URL(href, 'https://duckduckgo.com')
+    const uddg = u.searchParams.get('uddg')
+    if (uddg) return decodeURIComponent(uddg)
+    return u.href
+  } catch {
+    return href
+  }
+}
+
+/** Keyless real-web results via the DuckDuckGo HTML endpoint. */
+async function searchDuckDuckGoHtml(query: string, signal?: AbortSignal): Promise<WebSearchResult[]> {
+  const url = new URL('https://html.duckduckgo.com/html/')
+  url.searchParams.set('q', query)
+  const res = await fetch(url, {
+    signal,
+    headers: {
+      Accept: 'text/html',
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+    },
+  })
+  if (!res.ok) throw new ToolError(`DuckDuckGo search failed (${res.status})`)
+  const html = await res.text()
+
+  const results: WebSearchResult[] = []
+  const linkRe =
+    /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi
+  const snippetRe =
+    /<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/gi
+
+  const snippets: string[] = []
+  for (let m = snippetRe.exec(html); m; m = snippetRe.exec(html)) {
+    snippets.push(decodeHtmlEntities(m[1]!.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')))
+  }
+
+  let i = 0
+  for (let m = linkRe.exec(html); m && results.length < 8; m = linkRe.exec(html), i++) {
+    const href = unwrapDdgHref(m[1]!)
+    const title = decodeHtmlEntities(m[2]!.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '))
+    if (!href.startsWith('http') || !title) continue
+    results.push({ title, url: href, snippet: snippets[i] ?? '' })
+  }
+  return results
+}
+
+/** Instant Answer API — abstracts only; kept as secondary keyless source. */
+async function searchDuckDuckGoInstant(query: string, signal?: AbortSignal): Promise<WebSearchResult[]> {
   const url = new URL('https://api.duckduckgo.com/')
   url.searchParams.set('q', query)
   url.searchParams.set('format', 'json')
@@ -155,11 +237,25 @@ async function searchDuckDuckGo(query: string, signal?: AbortSignal): Promise<We
   return results
 }
 
+/** Keyless fallback: HTML SERP first (real results), Instant Answer as backup. */
+async function searchDuckDuckGo(query: string, signal?: AbortSignal): Promise<WebSearchResult[]> {
+  try {
+    const results = await searchDuckDuckGoHtml(query, signal)
+    if (results.length > 0) return results
+  } catch {
+    // fall through to Instant Answer
+  }
+  return searchDuckDuckGoInstant(query, signal)
+}
+
 async function raceKeyedProviders(
   query: string,
   signal?: AbortSignal,
 ): Promise<{ provider: string; results: WebSearchResult[] }> {
   const runners: Array<{ provider: string; run: () => Promise<WebSearchResult[]> }> = [
+    ...(config.WEB_SEARCH_GOOGLE_CX.trim()
+      ? [{ provider: 'google', run: () => searchGoogle(query, signal) }]
+      : []),
     { provider: 'brave', run: () => searchBrave(query, signal) },
     { provider: 'tavily', run: () => searchTavily(query, signal) },
     { provider: 'serper', run: () => searchSerper(query, signal) },
@@ -193,7 +289,9 @@ export async function webSearch(
 
   let out: { provider: string; query: string; results: WebSearchResult[] }
 
-  if (provider === 'brave') {
+  if (provider === 'google') {
+    out = { provider: 'google', query, results: await searchGoogle(query, signal) }
+  } else if (provider === 'brave') {
     out = { provider: 'brave', query, results: await searchBrave(query, signal) }
   } else if (provider === 'tavily') {
     out = { provider: 'tavily', query, results: await searchTavily(query, signal) }

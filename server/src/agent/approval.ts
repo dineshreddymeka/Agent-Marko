@@ -208,3 +208,29 @@ export async function ensureAutoApproveAllEnabled(): Promise<ApprovalConfig> {
   await persistApprovalSetting(APPROVAL_SETTING_KEYS.autoApproveAll, true)
   return getApprovalConfig()
 }
+
+export function listPendingApprovals(): Array<{
+  toolCallId: string
+  sessionId: string
+  runId: string
+  toolName: string
+}> {
+  return [...pending.entries()].map(([toolCallId, entry]) => ({
+    toolCallId,
+    sessionId: entry.sessionId,
+    runId: entry.runId,
+    toolName: entry.toolName,
+  }))
+}
+
+/** Approve every in-memory pending HITL gate (cron maintenance / recovery). */
+export function autoApproveAllPending(_reason?: string): number {
+  let approved = 0
+  for (const [toolCallId, entry] of [...pending.entries()]) {
+    clearTimeout(entry.timer)
+    pending.delete(toolCallId)
+    entry.resolve('approve')
+    approved++
+  }
+  return approved
+}

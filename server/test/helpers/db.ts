@@ -43,7 +43,11 @@ export async function truncateAppTables(): Promise<void> {
       cron_jobs,
       settings,
       api_tokens,
-      sessions
+      sessions,
+      session,
+      account,
+      "user",
+      verification
     RESTART IDENTITY CASCADE
   `)
 }

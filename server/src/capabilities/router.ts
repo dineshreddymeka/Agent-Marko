@@ -11,7 +11,7 @@ import type { AgentLlmRoute, ToolsForTurn } from './types'
 export type TurnCapabilityPlan = {
   route: AgentLlmRoute
   tools: ToolsForTurn
-  /** Pre-LLM interceptors only in degraded/legacy bridge modes. */
+  /** Pre-LLM interceptors for workspace drafts in degraded/legacy bridge modes. */
   allowPreLlmInterceptors: boolean
 }
 

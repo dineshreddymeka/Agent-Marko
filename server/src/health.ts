@@ -15,6 +15,10 @@ export interface HealthResponse {
   }
   /** Configured better-auth social providers (names only — no secrets). */
   oauthProviders: string[]
+  ldapEnabled: boolean
+  authRequired: boolean
+  /** better-auth tables present (migration 0015). Required for LDAP login. */
+  authDb: boolean
 }
 
 /** Public `/api/health` — no secrets (LLM base URL lives on debug health). */
@@ -31,7 +35,10 @@ export async function getHealthResponse(): Promise<HealthResponse> {
       model = null
     }
   }
-  const { oauthProvidersConfigured } = await import('./auth')
+  const { oauthProvidersConfigured, authRequired } = await import('./auth')
+  const { ldapAuthConfigured } = await import('./auth/ldap')
+  const { verifyAuthTables } = await import('./db/auth-db')
+  const authDb = db ? (await verifyAuthTables()).ok : false
   return {
     ok: true,
     version: VERSION,
@@ -42,6 +49,9 @@ export async function getHealthResponse(): Promise<HealthResponse> {
       model,
     },
     oauthProviders: oauthProvidersConfigured(),
+    ldapEnabled: ldapAuthConfigured(),
+    authRequired: authRequired(),
+    authDb,
   }
 }
 

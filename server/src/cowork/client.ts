@@ -12,9 +12,9 @@ import type {
   CoworkTaskResult,
 } from './types'
 
-const log = logger.child({ component: 'cowork' })
+import { config } from '../config'
 
-const DEFAULT_WORKSPACE = 'C:/Users/dines/BMC/jarvis-cowork-workspace'
+const log = logger.child({ component: 'cowork' })
 const STDERR_KEEP = 200
 const READY_TIMEOUT_MS = 60_000
 const DEFAULT_TASK_TIMEOUT_MS = 15 * 60_000
@@ -60,7 +60,9 @@ export function resolveCoworkExe(override?: string): string {
 
 export function resolveCoworkWorkspace(override?: string): string {
   if (override?.trim()) return override.trim()
-  return process.env.OPEN_COWORK_WORKSPACE?.trim() || DEFAULT_WORKSPACE
+  const fromEnv = process.env.OPEN_COWORK_WORKSPACE?.trim()
+  if (fromEnv) return fromEnv
+  return config.OPEN_COWORK_WORKSPACE
 }
 
 export function coworkExeExists(exe: string): boolean {

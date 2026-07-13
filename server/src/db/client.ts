@@ -4,10 +4,13 @@ import { config } from '../config'
 import { logger } from '../log'
 import { DbError } from '../errors'
 import { schema } from './schema'
+import { authSchema } from './auth-schema'
+
+const fullSchema = { ...schema, ...authSchema }
 
 type HermesDbGlobals = typeof globalThis & {
   __hermesSql?: SQL
-  __hermesDb?: ReturnType<typeof drizzle<typeof schema>>
+  __hermesDb?: ReturnType<typeof drizzle<typeof fullSchema>>
 }
 
 const g = globalThis as HermesDbGlobals
@@ -21,8 +24,8 @@ export function getSql(): SQL {
   if (!g.__hermesSql) {
     g.__hermesSql = new SQL(config.DATABASE_URL, {
       max: config.HERMES_DB_POOL_MAX,
-      // Release idle sockets so leaked/abandoned pools drain faster under load.
-      idleTimeout: 20,
+      // Release idle sockets; longer on localhost during multi-turn agent runs.
+      idleTimeout: config.HOST === '127.0.0.1' ? 120 : 20,
       maxLifetime: 1800,
     })
   }
@@ -31,7 +34,7 @@ export function getSql(): SQL {
 
 export function getDb() {
   if (!g.__hermesDb) {
-    g.__hermesDb = drizzle({ client: getSql(), schema })
+    g.__hermesDb = drizzle({ client: getSql(), schema: fullSchema })
   }
   return g.__hermesDb
 }
@@ -95,7 +98,8 @@ export async function getDbMetrics(): Promise<DbMetrics | null> {
         AND c.relkind = 'r'
         AND c.relname IN (
           'sessions', 'messages', 'memory', 'skills',
-          'profiles', 'cron_jobs', 'run_events', 'settings'
+          'profiles', 'cron_jobs', 'run_events', 'settings',
+          'user', 'session', 'account', 'verification'
         )
       ORDER BY c.relname
     `
@@ -114,4 +118,4 @@ export async function getDbMetrics(): Promise<DbMetrics | null> {
   }
 }
 
-export { schema }
+export { schema, fullSchema }

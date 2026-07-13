@@ -14,10 +14,12 @@ import { syncSkillsFromDisk } from './skills/loader'
 import { refreshMcpToolBridge } from './mcp/tool-bridge'
 import { handleRest } from './rest/router'
 import { loadApprovalSettings } from './agent/approval'
+import { hydrateWorkspaceRootFromSettings } from './workspace/root'
 import { securityHeaders } from './security-headers'
 import { resolveCorsOrigin } from './security/cors'
 import { startIndexerWorker } from './indexer/worker'
 import { startWorkspaceWatcher } from './indexer/watcher'
+import { staticDistPath, tryServeStatic } from './static'
 
 function corsHeaders(req: Request): HeadersInit {
   const origin = resolveCorsOrigin(req)
@@ -48,12 +50,15 @@ async function boot(): Promise<void> {
   logger.info('Boot starting', {
     host: config.HOST,
     port: config.PORT,
-    logLevel: config.LOG_LEVEL,
+    serveStatic: config.HERMES_SERVE_STATIC,
+    publicUrl: config.HERMES_PUBLIC_URL,
+    ldap: config.LDAP_ENABLED,
     llm: {
       mode: isMockLlmEnabled() ? 'mock' : 'live',
       baseUrl: config.LLM_BASE_URL,
       mockEnv: process.env.HERMES_MOCK_LLM ?? '(unset)',
     },
+    logLevel: config.LOG_LEVEL,
     debug: {
       llm: isDebugChannel('llm'),
       agui: isDebugChannel('agui'),
@@ -70,6 +75,16 @@ async function boot(): Promise<void> {
   }
 
   await runMigrations()
+  const { verifyAuthTables } = await import('./db/auth-db')
+  const authDb = await verifyAuthTables()
+  if (!authDb.ok) {
+    logger.warn('Auth database tables missing — run `bun run migrate` (0015_auth.sql)', {
+      missing: authDb.missing,
+    })
+  } else if (config.LDAP_ENABLED) {
+    logger.info('Auth database ready for LDAP', { tables: authDb.tables })
+  }
+  await hydrateWorkspaceRootFromSettings()
   await loadApprovalSettings(config.AUTO_APPROVE_ALL)
   const { ensureAutoApproveAllEnabled } = await import('./agent/approval')
   if (config.AUTO_APPROVE_ALL) await ensureAutoApproveAllEnabled()
@@ -82,13 +97,26 @@ async function boot(): Promise<void> {
   await refreshMcpToolBridge()
   try {
     const { refreshCapabilityManifest } = await import('./capabilities')
+    const { resolveAgentLlmRoute } = await import('./capabilities/health')
     const manifest = await refreshCapabilityManifest('boot')
+    const agentRoute = await resolveAgentLlmRoute()
     logger.info('Capability manifest warmed', {
       tools: manifest.tools.length,
       skills: manifest.skills.length,
       plugins: manifest.plugins.length,
       routing: manifest.routing,
+      agentLlm: {
+        toolsEnabled: agentRoute.toolsEnabled,
+        degraded: agentRoute.degraded,
+        reason: agentRoute.reason,
+        baseUrl: agentRoute.baseUrl,
+      },
     })
+    if (agentRoute.degraded) {
+      logger.warn(
+        'Agent tools degraded — set HERMES_AGENT_LLM_URL to a tool-capable OpenAI-compatible endpoint (not lm-bridge :3456 alone)',
+      )
+    }
   } catch (err) {
     logger.warn('Capability manifest warm failed', { error: String(err) })
   }
@@ -141,6 +169,14 @@ const server = Bun.serve({
           res = await auth.handler(req)
         } else if (url.pathname === '/api/health' && req.method === 'GET') {
           res = Response.json(await getHealthResponse())
+        } else if (config.HERMES_SERVE_STATIC) {
+          const staticRes = await tryServeStatic(req)
+          if (staticRes) res = staticRes
+          else {
+            const denied = await guardRequest(req)
+            if (denied) res = denied
+            else res = await handleRest(req)
+          }
         } else {
           const denied = await guardRequest(req)
           if (denied) res = denied
@@ -188,6 +224,8 @@ const server = Bun.serve({
 
 logger.info(`Open Jarvis server listening on http://${config.HOST}:${config.PORT}`, {
   logLevel: config.LOG_LEVEL,
+  serveStatic: config.HERMES_SERVE_STATIC,
+  staticRoot: config.HERMES_SERVE_STATIC ? staticDistPath() : undefined,
 })
 
 export default server

@@ -17,6 +17,7 @@ bun run dev
 
 - Frontend: http://localhost:5173
 - API health: http://127.0.0.1:3001/api/health
+- **Fleet deploy (LDAP, hundreds of hosts):** [docs/FLEET-DEPLOY.md](./docs/FLEET-DEPLOY.md)
 - API docs (Scalar): http://127.0.0.1:3001/api/docs · OpenAPI JSON: `/api/openapi.json` (`bun run openapi:export` writes `docs/openapi.json`)
 
 ## Verify matrix

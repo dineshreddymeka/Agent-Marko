@@ -1,5 +1,7 @@
 import { jsonResponse, parseJson } from './helpers'
 import { requireDatabaseOrResponse, withDatabase } from './db-guard'
+import { WORKSPACE_ROOT_SETTING } from '../workspace/root'
+import { allowDbPathSettings, isEnvSet } from '../paths'
 
 const SENSITIVE_KEYS = new Set(['llm_api_key', 'api_key', 'openai_api_key', 'office_graph_token'])
 
@@ -23,8 +25,20 @@ export async function handleSettings(req: Request, path: string): Promise<Respon
   const parts = path.split('/').filter(Boolean)
 
   if (req.method === 'GET' && parts.length === 2) {
+    const { config } = await import('../config')
     const all = await withDatabase(() => settingsRepo.getAll(), {})
-    return jsonResponse(maskSettings(all))
+    const merged: Record<string, unknown> = {
+      hermes_data_dir: config.HERMES_DATA_DIR,
+      workspace_root: config.WORKSPACE_ROOT,
+      cowork_workspace: config.OPEN_COWORK_WORKSPACE,
+      workspace_root_source: isEnvSet('WORKSPACE_ROOT')
+        ? 'env'
+        : allowDbPathSettings() && typeof all.workspace_root === 'string'
+          ? 'settings'
+          : 'derived',
+      ...all,
+    }
+    return jsonResponse(maskSettings(merged))
   }
 
   if (req.method === 'PUT' && parts.length === 2) {
@@ -32,11 +46,37 @@ export async function handleSettings(req: Request, path: string): Promise<Respon
     if (unavailable) return unavailable
     const body = await parseJson<Record<string, unknown>>(req)
     if (!body) return jsonResponse({ error: 'Invalid JSON' }, 400)
+    const { applyWorkspaceRootSetting } = await import('../workspace/root')
     for (const [key, value] of Object.entries(body)) {
       if (typeof value === 'string' && value.startsWith('••••')) continue
+      if (key === WORKSPACE_ROOT_SETTING) {
+        if (isEnvSet('WORKSPACE_ROOT')) {
+          continue
+        }
+        if (!allowDbPathSettings()) {
+          continue
+        }
+        if (typeof value === 'string' && value.trim()) {
+          await settingsRepo.set(key, value.trim())
+          await applyWorkspaceRootSetting(value.trim())
+        } else {
+          await settingsRepo.delete(key)
+          await applyWorkspaceRootSetting(null)
+        }
+        continue
+      }
       await settingsRepo.set(key, value)
     }
-    return jsonResponse(maskSettings(await settingsRepo.getAll()))
+    const { config } = await import('../config')
+    const all = await settingsRepo.getAll()
+    return jsonResponse(
+      maskSettings({
+        hermes_data_dir: config.HERMES_DATA_DIR,
+        workspace_root: config.WORKSPACE_ROOT,
+        cowork_workspace: config.OPEN_COWORK_WORKSPACE,
+        ...all,
+      }),
+    )
   }
 
   if (req.method === 'GET' && parts.length === 3 && parts[2] === 'export') {

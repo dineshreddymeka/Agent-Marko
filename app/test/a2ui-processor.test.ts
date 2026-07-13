@@ -3,6 +3,8 @@ import {
   extractA2uiSurfaceId,
   getSurface,
   getSurfaces,
+  hydrateA2uiFromRef,
+  isHydratableA2uiRef,
   processA2UIMessage,
   resolveA2uiSurfaceRef,
 } from '../src/lib/a2ui/processor'
@@ -51,5 +53,23 @@ describe('A2UI processor', () => {
       null,
     )
     expect(getSurface('test-mem')?.components[0]?.type).toBe('hermes:MemoryEntryEditor')
+  })
+
+  test('hydrates persisted surface payload on load', () => {
+    const payload = {
+      surfaceId: 'persisted-doc',
+      component: {
+        id: 'document-request',
+        type: 'hermes:DocumentRequestForm',
+        props: { deliverableType: 'pdf', topic: 'Q1 report' },
+      },
+      complete: true,
+    }
+    hydrateA2uiFromRef(payload, 'session-2')
+    const surface = getSurface('persisted-doc')
+    expect(surface?.complete).toBe(true)
+    expect(surface?.components[0]?.type).toBe('hermes:DocumentRequestForm')
+    expect(isHydratableA2uiRef(payload)).toBe(true)
+    expect(isHydratableA2uiRef({ surfaceId: 'x' })).toBe(false)
   })
 })

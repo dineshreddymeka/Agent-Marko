@@ -109,3 +109,9 @@ export function stopWorkspaceWatcher(opts?: { keepRestartTimer?: boolean }): voi
     restartTimer = null
   }
 }
+
+/** Stop and restart fs.watch when WORKSPACE_ROOT changes at runtime. */
+export function restartWorkspaceWatcher(): void {
+  stopWorkspaceWatcher()
+  startWorkspaceWatcher()
+}

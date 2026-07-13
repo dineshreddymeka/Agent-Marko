@@ -157,9 +157,10 @@ describe('resolveCoworkExe / resolveCoworkWorkspace', () => {
     )
   })
 
-  test('workspace from OPEN_COWORK_WORKSPACE or default', () => {
+  test('workspace from OPEN_COWORK_WORKSPACE or data-dir default', () => {
     delete process.env.OPEN_COWORK_WORKSPACE
-    expect(resolveCoworkWorkspace()).toBe('C:/Users/dines/BMC/jarvis-cowork-workspace')
+    const { config } = require('../src/config') as typeof import('../src/config')
+    expect(resolveCoworkWorkspace()).toBe(config.OPEN_COWORK_WORKSPACE)
     process.env.OPEN_COWORK_WORKSPACE = 'D:/ws'
     expect(resolveCoworkWorkspace()).toBe('D:/ws')
     expect(resolveCoworkWorkspace('E:/override')).toBe('E:/override')

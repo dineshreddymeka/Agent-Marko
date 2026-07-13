@@ -19,7 +19,7 @@ export function resolveAllowedSourcePath(
   const raw = sourcePath.trim()
   if (!raw) throw new Error('Source path is empty')
 
-  const hermesRoot = resolve(process.cwd(), config.WORKSPACE_ROOT)
+  const hermesRoot = config.WORKSPACE_ROOT
   const coworkRoot = resolve(config.OPEN_COWORK_WORKSPACE)
   const allowedRoots = [hermesRoot, coworkRoot]
   if (workspaceRoot) allowedRoots.push(resolve(workspaceRoot))

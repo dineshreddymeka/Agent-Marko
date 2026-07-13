@@ -23,7 +23,14 @@ export function allowedCorsOrigins(): string[] {
   } catch {
     set.add(normalizeOrigin(config.BETTER_AUTH_URL))
   }
-  const extra = (process.env.CORS_ORIGINS ?? '')
+  if (config.HERMES_PUBLIC_URL) {
+    try {
+      set.add(normalizeOrigin(new URL(config.HERMES_PUBLIC_URL).origin))
+    } catch {
+      set.add(normalizeOrigin(config.HERMES_PUBLIC_URL))
+    }
+  }
+  const extra = (config.CORS_ORIGINS ?? '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)

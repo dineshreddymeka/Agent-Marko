@@ -43,19 +43,21 @@ import { runEventsRepo } from '../db/repositories/run_events'
 import { sessionsRepo } from '../db/repositories/sessions'
 import { jsonResponse, parseJson } from './helpers'
 import { requireDatabaseOrResponse, withDatabase } from './db-guard'
+import { allowDbPathSettings, isEnvSet } from '../paths'
 
 async function loadCoworkPathOverrides(): Promise<{ exe?: string; workspace?: string }> {
   try {
     const { settingsRepo } = await import('../db/repositories/settings')
     const [exeRaw, wsRaw] = await Promise.all([
       withDatabase(() => settingsRepo.get(COWORK_SETTING_EXE), null),
-      withDatabase(() => settingsRepo.get(COWORK_SETTING_WORKSPACE), null),
+      allowDbPathSettings() && !isEnvSet('OPEN_COWORK_WORKSPACE')
+        ? withDatabase(() => settingsRepo.get(COWORK_SETTING_WORKSPACE), null)
+        : Promise.resolve(null),
     ])
     const exe = typeof exeRaw === 'string' && exeRaw.trim() ? exeRaw.trim() : undefined
     const workspace =
       typeof wsRaw === 'string' && wsRaw.trim() ? wsRaw.trim() : undefined
     return {
-      // settings > env config (empty settings falls through to config / env / default)
       exe: exe ?? (config.OPEN_COWORK_EXE || undefined),
       workspace: workspace ?? config.OPEN_COWORK_WORKSPACE,
     }
@@ -216,9 +218,11 @@ export async function handleCowork(req: Request, path: string): Promise<Response
       else await settingsRepo.delete(COWORK_SETTING_EXE)
     }
     if (typeof body.workspace === 'string') {
-      const trimmed = body.workspace.trim()
-      if (trimmed) await settingsRepo.set(COWORK_SETTING_WORKSPACE, trimmed)
-      else await settingsRepo.delete(COWORK_SETTING_WORKSPACE)
+      if (!isEnvSet('OPEN_COWORK_WORKSPACE') && allowDbPathSettings()) {
+        const trimmed = body.workspace.trim()
+        if (trimmed) await settingsRepo.set(COWORK_SETTING_WORKSPACE, trimmed)
+        else await settingsRepo.delete(COWORK_SETTING_WORKSPACE)
+      }
     }
 
     const overrides = await loadCoworkPathOverrides()

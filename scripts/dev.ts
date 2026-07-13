@@ -34,10 +34,23 @@ function loadRootEnv(): Record<string, string> {
   return out
 }
 
+function inferAgentLlmUrl(env: Record<string, string>): void {
+  if ((env.HERMES_AGENT_LLM_URL || '').trim()) return
+  const base = (env.LLM_BASE_URL || '').trim().replace(/\/$/, '')
+  const key = (env.LLM_API_KEY || '').trim()
+  if (!base || !key || key === 'mock') return
+  if (/:(3456)(?:\/|$)/i.test(base) || /lm-bridge/i.test(base)) return
+  env.HERMES_AGENT_LLM_URL = base
+}
+
 const rootEnv = loadRootEnv()
+inferAgentLlmUrl(rootEnv)
 const childEnv = { ...process.env, ...rootEnv, FORCE_COLOR: '1' }
 
-const server = Bun.spawn([bunExe, '--hot', 'src/index.ts'], {
+// Bun --hot panics on Windows after long runs (integer overflow). Opt in with HERMES_HOT=1.
+const serverArgs = [bunExe, ...(childEnv.HERMES_HOT === '1' ? ['--hot'] as const : []), 'src/index.ts']
+
+const server = Bun.spawn(serverArgs, {
   cwd: `${root}/server`,
   stdout: 'inherit',
   stderr: 'inherit',

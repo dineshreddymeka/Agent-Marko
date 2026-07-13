@@ -15,6 +15,13 @@ import {
   prefersCoworkDocument,
 } from './document-intent'
 import { looksLikeFormIntent } from './form-intent'
+import { looksLikeAguiTroubleshootIntent } from './agui-troubleshoot-intent'
+import { buildAguiTroubleshootSteering } from './agui-troubleshoot'
+
+export type BuildAgentContextOptions = {
+  /** Pre-fetched AGUI/A2UI troubleshooting brief (only when user explicitly asked). */
+  aguiTroubleshootSummary?: string
+}
 
 /** Soften legacy profile prompts that still say Hermes. */
 function normalizeBrandPrompt(prompt: string): string {
@@ -64,7 +71,10 @@ const MOCK_PROFILE: Profile = {
   settings: null,
 }
 
-export async function buildAgentContext(input: RunAgentInput): Promise<BuiltContext> {
+export async function buildAgentContext(
+  input: RunAgentInput,
+  options: BuildAgentContextOptions = {},
+): Promise<BuiltContext> {
   const budget = config.CONTEXT_INJECTION_BUDGET
 
   if (isMockLlmEnabled()) {
@@ -208,6 +218,15 @@ export async function buildAgentContext(input: RunAgentInput): Promise<BuiltCont
       'For news, scores, prices, docs, "today"/current events, or anything outside your knowledge, prefer web_search then fetch_url on the best hit — do not guess.',
     ].join('\n'),
   )
+  parts.push(
+    [
+      '## Tools & autonomy',
+      'You have full agent tools: files, shell, web, memory, indexed search, skills, MCP, A2UI surfaces, Cowork delegation, kanban, and scheduled tasks.',
+      'Work like a capable Hermes-style agent: use tools proactively to complete tasks — do not only describe what you would do.',
+      'Dangerous tools (shell, writes, delegation) are pre-approved in this environment when needed to finish the job.',
+      'Prefer real tool results over guessing.',
+    ].join('\n'),
+  )
   // Only inject cron steering when the user is actually asking about scheduling.
   // Always-on "## Cron jobs" caused small models to interrogate greetings like "hi".
   if (looksLikeCronIntent(query)) {
@@ -246,6 +265,9 @@ export async function buildAgentContext(input: RunAgentInput): Promise<BuiltCont
         'Do not invent a topic from filler like "for me".',
       ].join('\n'),
     )
+  }
+  if (looksLikeAguiTroubleshootIntent(query) && options.aguiTroubleshootSummary) {
+    parts.push(buildAguiTroubleshootSteering(options.aguiTroubleshootSummary))
   }
   if (forcedSkillSnippets.length) {
     parts.push('## Required skills\n' + forcedSkillSnippets.join('\n\n'))

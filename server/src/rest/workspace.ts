@@ -1,5 +1,5 @@
 import { readdir, readFile, writeFile, mkdir, unlink } from 'node:fs/promises'
-import { join, resolve, basename, extname } from 'node:path'
+import { join, basename, extname } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { config } from '../config'
 import { resolveInsideRoot } from '../fs/path-jail'
@@ -7,7 +7,7 @@ import { logger } from '../log'
 import { jsonResponse, parseJson } from './helpers'
 
 function root(): string {
-  return resolve(process.cwd(), config.WORKSPACE_ROOT)
+  return config.WORKSPACE_ROOT
 }
 
 function jail(relative: string): string {

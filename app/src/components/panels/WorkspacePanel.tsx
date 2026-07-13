@@ -69,6 +69,15 @@ export function WorkspacePanel() {
     refetchInterval: 30_000,
   })
 
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => apiClient.get<Record<string, unknown>>('/api/settings'),
+    staleTime: 60_000,
+    retry: false,
+  })
+  const workspaceRoot =
+    typeof settings?.workspace_root === 'string' ? settings.workspace_root : null
+
   useEffect(() => {
     if (root) setChildren((c) => ({ ...c, '.': root.entries }))
   }, [root])
@@ -180,6 +189,14 @@ export function WorkspacePanel() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-xs">
+        {workspaceRoot ? (
+          <span
+            className="max-w-[min(100%,28rem)] truncate font-mono text-[10px] text-fg-muted"
+            title={workspaceRoot}
+          >
+            {workspaceRoot}
+          </span>
+        ) : null}
         {git?.isRepo ? (
           <span
             className={`inline-flex items-center gap-1 rounded px-2 py-0.5 ${

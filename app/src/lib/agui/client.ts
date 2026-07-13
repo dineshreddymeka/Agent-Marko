@@ -13,6 +13,7 @@ let agent: HttpAgent | null = null
 let currentSessionId: string | null = null
 /** In-flight runAgent promise — awaited before starting a replacement run. */
 let activeRunPromise: Promise<void> | null = null
+/** Run lifecycle FSM + watchdog patterns — see docs/chat-reliability-frameworks.md */
 const STARTUP_STALL_TIMEOUT_MS = 15_000
 const STARTUP_STALL_MESSAGE =
   'Run startup timed out. Please retry.'
@@ -229,7 +230,8 @@ export async function runAgent(input: {
   }
   const stopStartupWatchdog = startStartupWatchdog(runId)
 
-  const runPromise = (async () => {
+  let runPromise: Promise<void> | null = null
+  runPromise = (async () => {
     try {
       await httpAgent.runAgent({ runId, tools: runInput.tools, context: runInput.context })
       // Ignore completion if a newer run already replaced this one.

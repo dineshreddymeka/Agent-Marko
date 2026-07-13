@@ -14,6 +14,12 @@ export async function handleDebug(req: Request, path: string): Promise<Response 
     const dbOk = await pingDatabase()
     const { getDbMetrics } = await import('../db/client')
     const dbMetrics = dbOk ? await getDbMetrics() : null
+    const authDb = dbOk
+      ? await import('../db/auth-db').then((m) => m.verifyAuthTables())
+      : { ok: false, tables: {}, missing: [] }
+    const authCounts = dbOk
+      ? await import('../db/auth-db').then((m) => m.getAuthDbCounts())
+      : null
     const { oauthProvidersConfigured } = await import('../auth')
     const { config } = await import('../config')
     const { getLlmDebugInfo } = await import('../health')
@@ -32,6 +38,8 @@ export async function handleDebug(req: Request, path: string): Promise<Response 
       database: dbOk ? 'connected' : 'unreachable',
       db: dbOk,
       dbMetrics,
+      authDb,
+      authCounts,
       activeRuns: active.length,
       activeRunDetails: active.map((r) => ({
         runId: r.runId,

@@ -131,4 +131,9 @@ export const messagesRepo = {
     const vec = `[${embedding.join(',')}]`
     await db.execute(sql`UPDATE messages SET embedding = ${vec}::vector WHERE id = ${id}`)
   },
+
+  async patchA2ui(id: string, a2ui: Record<string, unknown> | null): Promise<void> {
+    const db = getDb()
+    await db.update(messages).set({ a2ui }).where(eq(messages.id, id))
+  },
 }

@@ -37,6 +37,26 @@ export function AppShell() {
   const showSessionsSidebar = isChatRoute(pathname)
 
   useEffect(() => {
+    if (pathname === '/login') return
+    void (async () => {
+      try {
+        const health = (await fetch('/api/health').then((r) => r.json())) as {
+          authRequired?: boolean
+        }
+        if (!health.authRequired) return
+        const session = await fetch('/api/auth/get-session', { credentials: 'include' }).then(
+          (r) => r.json(),
+        )
+        if (!session?.user) {
+          window.location.href = '/login'
+        }
+      } catch {
+        /* health unavailable — stay on page */
+      }
+    })()
+  }, [pathname])
+
+  useEffect(() => {
     if (!showSessionsSidebar) {
       setSidebarOpen(false)
     } else if (window.matchMedia('(max-width: 767px)').matches) {

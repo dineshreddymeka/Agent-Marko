@@ -1,5 +1,12 @@
 import { z } from 'zod'
-import { isAbsolute, resolve } from 'node:path'
+import { resolve } from 'node:path'
+import {
+  repoRoot,
+  resolveBackupDir,
+  resolveCoworkWorkspace,
+  resolveHermesDataDir,
+  resolveWorkspaceRoot,
+} from './paths'
 
 function envBool(defaultValue = false) {
   return z.preprocess((value) => {
@@ -12,17 +19,16 @@ function envBool(defaultValue = false) {
   }, z.boolean())
 }
 
-/** Resolve relative data paths against the monorepo root (not process cwd). */
+/** Resolve relative paths against the monorepo root (dev-only relative overrides). */
 function resolveFromRepoRoot(p: string): string {
-  if (isAbsolute(p)) return p
-  // server/src/config.ts → ../../ = hermes-ui/
-  return resolve(import.meta.dir, '../..', p)
+  return resolve(repoRoot(), p)
 }
 
 const envSchema = z.object({
   DATABASE_URL: z.string().default('postgres://hermes:hermes@localhost:5433/hermes'),
-  HERMES_DATA_DIR: z.string().default('C:/hermes-data'),
-  HERMES_BACKUP_DIR: z.string().default('C:/hermes-data/backups'),
+  /** Host data root — workspace, backups, and cowork dirs derive from here when unset. */
+  HERMES_DATA_DIR: z.string().default(''),
+  HERMES_BACKUP_DIR: z.string().default(''),
   /**
    * Bun.sql pool size; keep well below Postgres max_connections (50 in compose).
    * Default 5 leaves headroom for hot-reload leftovers, psql, and parallel agents.
@@ -53,7 +59,14 @@ const envSchema = z.object({
   ALLOW_SIGNUP: envBool(false),
   HOST: z.string().default('127.0.0.1'),
   PORT: z.coerce.number().default(3001),
-  WORKSPACE_ROOT: z.string().default('./workspace'),
+  /** Fleet: public browser origin (defaults to BETTER_AUTH_URL). Used for CORS + auth cookies. */
+  HERMES_PUBLIC_URL: z.string().default(''),
+  /** Fleet: serve `app/dist` from the API port (no separate Vite dev server). */
+  HERMES_SERVE_STATIC: envBool(false),
+  /** Comma-separated extra CORS origins (e.g. https://jarvis.corp.com). */
+  CORS_ORIGINS: z.string().default(''),
+  /** Empty = `${HERMES_DATA_DIR}/workspace` (set per host in fleet deploy). */
+  WORKSPACE_ROOT: z.string().default(''),
   BETTER_AUTH_SECRET: z.string().default('dev-secret-change-in-production'),
   BETTER_AUTH_URL: z.string().default('http://127.0.0.1:3001'),
   /** OAuth (optional) — when set, better-auth socialProviders activate */
@@ -76,18 +89,36 @@ const envSchema = z.object({
   CONTEXT_TOKEN_LIMIT: z.coerce.number().default(128_000),
   CONTEXT_INJECTION_BUDGET: z.coerce.number().default(8000),
   COMPUTE_POOL_SIZE: z.coerce.number().default(2),
-  WEB_SEARCH_PROVIDER: z.enum(['auto', 'brave', 'tavily', 'serper', 'duckduckgo']).default('auto'),
+  WEB_SEARCH_PROVIDER: z
+    .enum(['auto', 'google', 'brave', 'tavily', 'serper', 'duckduckgo'])
+    .default('auto'),
   WEB_SEARCH_API_KEY: z.string().optional(),
+  /** Google Programmable Search engine id (cx) — required for WEB_SEARCH_PROVIDER=google. */
+  WEB_SEARCH_GOOGLE_CX: z.string().default(''),
   RUN_CODE_TIMEOUT_MS: z.coerce.number().default(30_000),
   ENABLE_TOTP: envBool(false),
+  /** Active Directory / OpenLDAP sign-in (fleet deploy). */
+  LDAP_ENABLED: envBool(false),
+  LDAP_URL: z.string().default(''),
+  /** Service account DN for user search (optional for some simple binds). */
+  LDAP_BIND_DN: z.string().default(''),
+  LDAP_BIND_PASSWORD: z.string().default(''),
+  LDAP_BASE_DN: z.string().default(''),
+  /** AD: sAMAccountName or userPrincipalName; OpenLDAP: uid */
+  LDAP_USER_ATTRIBUTE: z.string().default('sAMAccountName'),
+  /** Fallback email domain when LDAP has no mail attribute (e.g. corp.example.com). */
+  LDAP_EMAIL_DOMAIN: z.string().default(''),
+  LDAP_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60_000).default(8_000),
+  /** Set false only for dev LDAPS with self-signed certs. */
+  LDAP_TLS_REJECT_UNAUTHORIZED: envBool(true),
   /**
    * Open Cowork packaged Electron exe (headless stdio worker).
    * Empty = resolve at runtime via OPEN_COWORK_PATH / COWORK_EXE / Windows default candidate.
    * Do not invent a machine-specific path here — missing exe is reported by /api/cowork/setup.
    */
   OPEN_COWORK_EXE: z.string().default(''),
-  /** Shared Open Cowork workspace (data plane: inbox/outbox/…). */
-  OPEN_COWORK_WORKSPACE: z.string().default('C:/Users/dines/BMC/jarvis-cowork-workspace'),
+  /** Empty = `${HERMES_DATA_DIR}/cowork-workspace`. */
+  OPEN_COWORK_WORKSPACE: z.string().default(''),
   /** Pass --auto-approve to headless Cowork (trusted sandboxed tasks only). */
   OPEN_COWORK_AUTO_APPROVE: envBool(true),
   /** Per-task timeout for CoworkClient.runTask (default 15 minutes). */
@@ -123,14 +154,38 @@ const envSchema = z.object({
   CLEANUP_SANDBOX_RETENTION_MINUTES: z.coerce.number().default(60),
 })
 
+/** Chat-only lm-bridge / :3456 cannot run tool_calls. */
+function isChatOnlyLlmBaseUrl(url: string): boolean {
+  const normalized = url.replace(/\/$/, '')
+  return /:3456(?:\/|$)/i.test(normalized) || /lm-bridge/i.test(normalized)
+}
+
 export type Env = z.infer<typeof envSchema>
 
 export function loadConfig(): Env {
   const raw = envSchema.parse(process.env)
+  let agentLlmUrl = (raw.HERMES_AGENT_LLM_URL || '').trim()
+  const baseUrl = raw.LLM_BASE_URL.replace(/\/$/, '')
+  const apiKey = (raw.LLM_API_KEY || '').trim()
+  if (!agentLlmUrl && apiKey && apiKey !== 'mock' && !isChatOnlyLlmBaseUrl(baseUrl)) {
+    agentLlmUrl = baseUrl
+  }
+
+  const dataDir = resolveHermesDataDir(raw.HERMES_DATA_DIR)
+  const workspaceRoot = resolveWorkspaceRoot(raw.WORKSPACE_ROOT, dataDir)
+  const backupDir = resolveBackupDir(raw.HERMES_BACKUP_DIR, dataDir)
+  const coworkWorkspace = resolveCoworkWorkspace(raw.OPEN_COWORK_WORKSPACE, dataDir)
+  const publicUrl = (raw.HERMES_PUBLIC_URL || '').trim() || raw.BETTER_AUTH_URL
+
   return {
     ...raw,
+    HERMES_AGENT_LLM_URL: agentLlmUrl,
+    HERMES_DATA_DIR: dataDir,
+    HERMES_BACKUP_DIR: backupDir,
+    HERMES_PUBLIC_URL: publicUrl,
+    WORKSPACE_ROOT: workspaceRoot,
+    OPEN_COWORK_WORKSPACE: coworkWorkspace,
     SKILLS_DIR: resolveFromRepoRoot(raw.SKILLS_DIR),
-    WORKSPACE_ROOT: resolveFromRepoRoot(raw.WORKSPACE_ROOT),
   }
 }
 

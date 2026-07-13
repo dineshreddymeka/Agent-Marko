@@ -7,7 +7,13 @@ import {
   thinkingMessageId,
 } from '@app/lib/stream-pacing'
 import { prefersReducedMotion } from '@app/hooks/useReducedMotion'
-import { resolveA2uiSurfaceRef } from '@app/lib/a2ui/processor'
+import { hydrateA2uiFromRef, resolveA2uiSurfaceRef } from '@app/lib/a2ui/processor'
+
+function hydrateMessagesA2ui(sessionId: string, messages: ChatMessage[]): void {
+  for (const m of messages) {
+    if (m.a2ui != null) hydrateA2uiFromRef(m.a2ui, sessionId)
+  }
+}
 
 export type ToolCallStatus = 'pending' | 'streaming-args' | 'executing' | 'done' | 'error'
 
@@ -243,8 +249,10 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   streamingBuffer: {},
   recentEvents: [],
 
-  setMessages: (sessionId, messages) =>
-    set((s) => ({ messagesBySession: { ...s.messagesBySession, [sessionId]: messages } })),
+  setMessages: (sessionId, messages) => {
+    hydrateMessagesA2ui(sessionId, messages)
+    set((s) => ({ messagesBySession: { ...s.messagesBySession, [sessionId]: messages } }))
+  },
 
   addMessage: (sessionId, message) =>
     set((s) => ({
@@ -392,17 +400,21 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     })
   },
 
-  messageFromDto: (msg) => ({
-    id: msg.id,
-    sessionId: msg.sessionId,
-    runId: msg.runId,
-    role: msg.role,
-    content: msg.content,
-    thinking: msg.thinking,
-    toolName: msg.toolName,
-    toolArgs: msg.toolArgs,
-    toolResult: msg.toolResult,
-    a2ui: resolveA2uiSurfaceRef(msg.a2ui) ?? undefined,
-    createdAt: msg.createdAt,
-  }),
+  messageFromDto: (msg) => {
+    const a2ui = msg.a2ui ?? undefined
+    if (a2ui != null) hydrateA2uiFromRef(a2ui, msg.sessionId)
+    return {
+      id: msg.id,
+      sessionId: msg.sessionId,
+      runId: msg.runId,
+      role: msg.role,
+      content: msg.content,
+      thinking: msg.thinking,
+      toolName: msg.toolName,
+      toolArgs: msg.toolArgs,
+      toolResult: msg.toolResult,
+      a2ui: resolveA2uiSurfaceRef(a2ui) ?? undefined,
+      createdAt: msg.createdAt,
+    }
+  },
 }))

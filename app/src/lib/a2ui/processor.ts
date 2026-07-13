@@ -48,6 +48,19 @@ export function resolveA2uiSurfaceRef(a2ui: unknown): string | null {
   return null
 }
 
+/** True when a persisted `a2ui` ref includes a renderable surface payload. */
+export function isHydratableA2uiRef(a2ui: unknown): boolean {
+  if (!a2ui || typeof a2ui !== 'object') return false
+  const payload = a2ui as { surfaceId?: unknown; component?: unknown }
+  return typeof payload.surfaceId === 'string' && payload.component != null
+}
+
+/** Replay persisted/streamed A2UI payloads into the in-memory surface map. */
+export function hydrateA2uiFromRef(a2ui: unknown, sessionId: string | null): void {
+  if (!isHydratableA2uiRef(a2ui)) return
+  processA2UIMessage(a2ui, sessionId)
+}
+
 export function processA2UIMessage(payload: unknown, sessionId: string | null): void {
   if (!payload || typeof payload !== 'object') return
 
