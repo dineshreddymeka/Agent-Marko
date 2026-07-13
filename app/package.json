@@ -35,7 +35,7 @@
     "@tanstack/router-plugin": "^1.120.10",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
-    "@babel/core": "^7.29.0",
+    "@babel/core": "^8.0.1",
     "@rolldown/plugin-babel": "^0.2.3",
     "@types/babel__core": "^7.20.5",
     "@vitejs/plugin-react": "6.0.3",
@@ -43,7 +43,7 @@
     "happy-dom": "^20.10.6",
     "postcss": "^8.5.16",
     "tailwindcss": "^4.1.8",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vite": "^8.1.4"
   }
 }
