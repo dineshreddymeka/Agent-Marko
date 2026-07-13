@@ -1,8 +1,10 @@
 import { describe, expect, test, beforeEach } from 'bun:test'
 import {
+  extractA2uiSurfaceId,
   getSurface,
   getSurfaces,
   processA2UIMessage,
+  resolveA2uiSurfaceRef,
 } from '../src/lib/a2ui/processor'
 
 describe('A2UI processor', () => {
@@ -26,6 +28,13 @@ describe('A2UI processor', () => {
     const surface = getSurface('test-cron')
     expect(surface?.complete).toBe(true)
     expect(surface?.components[0]?.type).toBe('hermes:CronSchedulePicker')
+  })
+
+  test('extracts surface id from payload and persisted refs', () => {
+    expect(extractA2uiSurfaceId({ surfaceId: 'doc-1' })).toBe('doc-1')
+    expect(resolveA2uiSurfaceRef('doc-2')).toBe('doc-2')
+    expect(resolveA2uiSurfaceRef({ surfaceId: 'doc-3' })).toBe('doc-3')
+    expect(resolveA2uiSurfaceRef(null)).toBeNull()
   })
 
   test('processes memory editor surface', () => {

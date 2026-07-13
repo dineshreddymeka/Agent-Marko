@@ -32,7 +32,7 @@ import { useAgentStateStore } from '@app/stores/agentState'
 import { useChatStore } from '@app/stores/chat'
 import { useSessionsStore } from '@app/stores/sessions'
 import { useUiStore } from '@app/stores/ui'
-import { processA2UIMessage } from '@app/lib/a2ui/processor'
+import { extractA2uiSurfaceId, processA2UIMessage } from '@app/lib/a2ui/processor'
 import { executeFrontendTool, isFrontendTool } from '@app/lib/agui/frontend-tools'
 import { mergeCoworkProgress } from '@app/lib/cowork-progress'
 import { generateId } from '@app/lib/utils'
@@ -375,6 +375,10 @@ export function dispatchAguiEvent(event: BaseEvent, sessionId: string | null): v
         })
       } else if (name === 'a2ui.message') {
         processA2UIMessage(value, sessionId)
+        const surfaceId = extractA2uiSurfaceId(value)
+        if (surfaceId && sessionId) {
+          chat.attachA2uiSurface(sessionId, surfaceId)
+        }
       } else if (name === 'hermes.approval.required') {
         const payload = value as HermesApprovalRequiredPayload
         chat.setPendingApproval({

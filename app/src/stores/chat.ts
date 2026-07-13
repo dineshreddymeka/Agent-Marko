@@ -7,6 +7,7 @@ import {
   thinkingMessageId,
 } from '@app/lib/stream-pacing'
 import { prefersReducedMotion } from '@app/hooks/useReducedMotion'
+import { resolveA2uiSurfaceRef } from '@app/lib/a2ui/processor'
 
 export type ToolCallStatus = 'pending' | 'streaming-args' | 'executing' | 'done' | 'error'
 
@@ -76,6 +77,12 @@ interface ChatState {
 
   setMessages: (sessionId: string, messages: ChatMessage[]) => void
   addMessage: (sessionId: string, message: ChatMessage) => void
+  /** Bind an A2UI surface to the assistant message that triggered it. */
+  attachA2uiSurface: (
+    sessionId: string,
+    surfaceId: string,
+    messageId?: string,
+  ) => void
   appendStreamContent: (messageId: string, delta: string) => void
   flushStreamBuffer: (messageId: string) => void
   appendThinking: (messageId: string, delta: string) => void
@@ -247,6 +254,36 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       },
     })),
 
+  attachA2uiSurface: (sessionId, surfaceId, messageId) =>
+    set((s) => {
+      let targetId = messageId
+      if (!targetId) {
+        const a2uiTools = new Set([
+          'document_form_show',
+          'cron_form_show',
+          'form_request_show',
+          'a2ui_render',
+        ])
+        const tc = [...Object.values(s.toolCalls)]
+          .reverse()
+          .find((t) => a2uiTools.has(t.name) && t.messageId)
+        targetId = tc?.messageId
+      }
+      if (!targetId) {
+        const msgs = s.messagesBySession[sessionId] ?? []
+        targetId = [...msgs].reverse().find((m) => m.role === 'assistant')?.id
+      }
+      if (!targetId) return s
+
+      const list = s.messagesBySession[sessionId] ?? []
+      const next = list.map((m) =>
+        m.id === targetId ? { ...m, a2ui: surfaceId } : m,
+      )
+      return {
+        messagesBySession: { ...s.messagesBySession, [sessionId]: next },
+      }
+    }),
+
   appendStreamContent: (messageId, delta) => {
     set((s) => ({
       streamingBuffer: {
@@ -365,7 +402,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     toolName: msg.toolName,
     toolArgs: msg.toolArgs,
     toolResult: msg.toolResult,
-    a2ui: msg.a2ui,
+    a2ui: resolveA2uiSurfaceRef(msg.a2ui) ?? undefined,
     createdAt: msg.createdAt,
   }),
 }))

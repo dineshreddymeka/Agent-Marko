@@ -33,6 +33,21 @@ export function getSurface(id: string): A2UISurfaceState | undefined {
   return surfaces.get(id)
 }
 
+/** Surface id from an `a2ui.message` custom event payload. */
+export function extractA2uiSurfaceId(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return null
+  const sid = (payload as { surfaceId?: unknown }).surfaceId
+  return typeof sid === 'string' && sid.length > 0 ? sid : null
+}
+
+/** Normalize persisted or streamed `a2ui` refs to a surface id string. */
+export function resolveA2uiSurfaceRef(a2ui: unknown): string | null {
+  if (a2ui == null) return null
+  if (typeof a2ui === 'string' && a2ui.length > 0) return a2ui
+  if (typeof a2ui === 'object') return extractA2uiSurfaceId(a2ui)
+  return null
+}
+
 export function processA2UIMessage(payload: unknown, sessionId: string | null): void {
   if (!payload || typeof payload !== 'object') return
 

@@ -397,9 +397,23 @@ function mergeSessionMessages(
     serverList.map((m) => `${m.role}\0${m.content}`),
   )
   for (const m of localList) {
-    if (byId.has(m.id)) continue
+    if (byId.has(m.id)) {
+      const serverMsg = byId.get(m.id)!
+      if (m.a2ui != null && serverMsg.a2ui == null) {
+        byId.set(m.id, { ...serverMsg, a2ui: m.a2ui })
+      }
+      continue
+    }
     // Client optimistic user ids differ from server-generated ids — skip dupes by content.
-    if (m.content && serverFingerprints.has(`${m.role}\0${m.content}`)) continue
+    if (m.content && serverFingerprints.has(`${m.role}\0${m.content}`)) {
+      const match = serverList.find(
+        (s) => s.role === m.role && s.content === m.content,
+      )
+      if (match && m.a2ui != null && match.a2ui == null) {
+        byId.set(match.id, { ...match, a2ui: m.a2ui })
+      }
+      continue
+    }
     byId.set(m.id, m)
   }
   return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt))

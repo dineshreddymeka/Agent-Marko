@@ -21,6 +21,7 @@ function toDto(row: typeof messages.$inferSelect): Message {
 }
 
 type CreateMessageInput = {
+  id?: string
   sessionId: string
   runId?: string | null
   role: Message['role']
@@ -73,6 +74,7 @@ export const messagesRepo = {
     const [row] = await db
       .insert(messages)
       .values({
+        ...(input.id ? { id: input.id } : {}),
         sessionId: input.sessionId,
         runId: input.runId ?? null,
         role: input.role,
@@ -96,6 +98,7 @@ export const messagesRepo = {
       .insert(messages)
       .values(
         items.map((input) => ({
+          ...(input.id ? { id: input.id } : {}),
           sessionId: input.sessionId,
           runId: input.runId ?? null,
           role: input.role,

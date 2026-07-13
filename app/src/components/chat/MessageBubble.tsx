@@ -3,6 +3,7 @@ import { StreamingMarkdown } from '@app/components/chat/StreamingMarkdown'
 import { ThinkingBlock } from '@app/components/chat/ThinkingBlock'
 import { ToolCallCard } from '@app/components/chat/ToolCallCard'
 import { A2UISurface } from '@app/components/a2ui/A2UISurface'
+import { resolveA2uiSurfaceRef } from '@app/lib/a2ui/processor'
 import type { ChatMessage } from '@app/stores/chat'
 import { useChatStore } from '@app/stores/chat'
 import { cn } from '@app/lib/utils'
@@ -36,6 +37,7 @@ export function MessageBubble({ message, animateEnter }: MessageBubbleProps) {
   const relatedTools = Object.values(toolCalls).filter(
     (tc) => tc.messageId === message.id || message.toolName === tc.name,
   )
+  const a2uiSurfaceId = resolveA2uiSurfaceRef(message.a2ui)
 
   if (message.role === 'tool' && relatedTools.length > 0) {
     return null
@@ -95,9 +97,9 @@ export function MessageBubble({ message, animateEnter }: MessageBubbleProps) {
             <ToolCallCard toolCall={tc} />
           </div>
         ))}
-        {message.a2ui != null && (
+        {a2uiSurfaceId && (
           <div className="mt-2 w-full max-w-[92%]">
-            <A2UISurface surfaceId={String(message.a2ui)} />
+            <A2UISurface surfaceId={a2uiSurfaceId} />
           </div>
         )}
       </div>

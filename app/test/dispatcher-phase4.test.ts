@@ -270,6 +270,44 @@ describe('agui dispatcher Phase 4 events', () => {
     )
     expect(useChatStore.getState().pendingApproval?.toolName).toBe('run_shell')
   })
+  test('a2ui.message binds surface to parent assistant message', () => {
+    useChatStore.getState().addMessage('s1', {
+      id: 'assistant-1',
+      sessionId: 's1',
+      runId: 'r1',
+      role: 'assistant',
+      content: 'Opening the document request form…',
+      createdAt: new Date().toISOString(),
+    })
+    useChatStore.getState().upsertToolCall('tc-doc', {
+      id: 'tc-doc',
+      name: 'document_form_show',
+      args: '{"topic":"new york"}',
+      status: 'executing',
+      messageId: 'assistant-1',
+    })
+
+    dispatchAguiEvent(
+      {
+        type: EventType.CUSTOM,
+        name: 'a2ui.message',
+        value: {
+          surfaceId: 'doc-form-test',
+          component: {
+            id: 'document-request',
+            type: 'hermes:DocumentRequestForm',
+            props: { deliverableType: 'pdf', topic: 'new york' },
+          },
+          complete: true,
+        },
+      } as never,
+      's1',
+    )
+
+    const msg = useChatStore.getState().messagesBySession.s1?.[0]
+    expect(msg?.a2ui).toBe('doc-form-test')
+  })
+
   test('hermes.cowork.progress attaches lines to delegate_to_cowork tool card', () => {
     useChatStore.getState().upsertToolCall('tc-cowork', {
       id: 'tc-cowork',

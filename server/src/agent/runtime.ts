@@ -47,6 +47,39 @@ import './tools/chrome'
 const MAX_TOOL_ITERATIONS = 20
 const THINKING_FLUSH_MS = 100
 
+function surfaceIdFromToolResult(result: unknown): string | null {
+  if (!result || typeof result !== 'object') return null
+  const customEvent = (result as { customEvent?: { value?: unknown } }).customEvent
+  const value = customEvent?.value
+  if (!value || typeof value !== 'object') return null
+  const sid = (value as { surfaceId?: unknown }).surfaceId
+  return typeof sid === 'string' && sid.length > 0 ? sid : null
+}
+
+async function persistInterceptorAssistantMessage(opts: {
+  sessionId: string
+  runId: string
+  messageId: string
+  content: string
+  a2uiSurfaceId?: string | null
+}): Promise<void> {
+  try {
+    const msg = await messagesRepo.create({
+      id: opts.messageId,
+      sessionId: opts.sessionId,
+      runId: opts.runId,
+      role: 'assistant',
+      content: opts.content,
+      thinking: null,
+      tokens: 0,
+      a2ui: opts.a2uiSurfaceId ? { surfaceId: opts.a2uiSurfaceId } : null,
+    })
+    queueEmbedding('message', msg.id, opts.content)
+  } catch (err) {
+    log.warn('Failed to persist assistant message', { error: String(err) })
+  }
+}
+
 /** Consecutive calls in this set run via Promise.all (no mutating side effects). */
 const READ_ONLY_TOOL_NAMES = new Set([
   'web_search',
@@ -280,15 +313,13 @@ export async function runNativeAgent(
           role: 'tool',
         })
         try {
-          const msg = await messagesRepo.create({
+          await persistInterceptorAssistantMessage({
             sessionId: input.threadId,
             runId: input.runId,
-            role: 'assistant',
+            messageId,
             content: ack,
-            thinking: null,
-            tokens: 0,
+            a2uiSurfaceId: surfaceIdFromToolResult(result),
           })
-          queueEmbedding('message', msg.id, ack)
         } catch (err) {
           log.warn('Failed to persist assistant message', { error: String(err) })
         }
@@ -346,15 +377,13 @@ export async function runNativeAgent(
           role: 'tool',
         })
         try {
-          const msg = await messagesRepo.create({
+          await persistInterceptorAssistantMessage({
             sessionId: input.threadId,
             runId: input.runId,
-            role: 'assistant',
+            messageId,
             content: ack,
-            thinking: null,
-            tokens: 0,
+            a2uiSurfaceId: surfaceIdFromToolResult(result),
           })
-          queueEmbedding('message', msg.id, ack)
         } catch (err) {
           log.warn('Failed to persist assistant message', { error: String(err) })
         }
@@ -403,15 +432,13 @@ export async function runNativeAgent(
           role: 'tool',
         })
         try {
-          const msg = await messagesRepo.create({
+          await persistInterceptorAssistantMessage({
             sessionId: input.threadId,
             runId: input.runId,
-            role: 'assistant',
+            messageId,
             content: ack,
-            thinking: null,
-            tokens: 0,
+            a2uiSurfaceId: surfaceIdFromToolResult(result),
           })
-          queueEmbedding('message', msg.id, ack)
         } catch (err) {
           log.warn('Failed to persist assistant message', { error: String(err) })
         }
