@@ -35,7 +35,7 @@
     "@tanstack/router-plugin": "^1.120.10",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
-    "@babel/core": "^7.29.0",
+    "@babel/core": "^8.0.1",
     "@rolldown/plugin-babel": "^0.2.3",
     "@types/babel__core": "^7.20.5",
     "@vitejs/plugin-react": "6.0.3",
