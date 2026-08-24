@@ -38,7 +38,7 @@
     "@babel/core": "^7.29.0",
     "@rolldown/plugin-babel": "^0.2.3",
     "@types/babel__core": "^7.20.5",
-    "@vitejs/plugin-react": "6.0.3",
+    "@vitejs/plugin-react": "6.1.0",
     "babel-plugin-react-compiler": "^1.0.0",
     "happy-dom": "^20.10.6",
     "postcss": "^8.5.16",
